@@ -47,7 +47,7 @@ class App
   static void Main()
   { GameLib.Fonts.TrueTypeFont font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"arial.ttf", 12);
     WM.WindowTitle = "Smarm "+Version;
-    font.RenderStyle = GameLib.Fonts.RenderStyle.Blended;
+    font.RenderStyle = GameLib.Fonts.RenderStyle.Shaded;
     desktop.Font = font;
 
     Video.Initialize();
