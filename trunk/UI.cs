@@ -76,9 +76,9 @@ class ColorButton : Button
           App.Desktop.World.SelectedColor = Color = App.Desktop.World.SelectedColor;
         break;
       case MouseButton.Right:
-        ColorPicker cp = new ColorPicker();
+        /*ColorPicker cp = new ColorPicker();
         cp.ShowDialog(Desktop);
-        if(cp.Button==ButtonClicked.Ok) Color = (Color)cp.DialogResult;
+        if(cp.Button==ButtonClicked.Ok) Color = (Color)cp.DialogResult;*/
         break;
     }
     e.Handled = true;

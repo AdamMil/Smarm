@@ -175,7 +175,7 @@ class Layer : IDisposable
           o.Blit(dest, bounds.X, bounds.Y, hilite!=null && Array.IndexOf(hilite, o)!=-1);
       }
     else
-    { if(font!=null) font.Color = Color.White;
+    { if(font!=null) { font.Color=Color.White; font.BackColor=Color.Transparent; }
       foreach(Object obj in objects)
         { Rectangle r = obj.Bounds;
           if(zoom==ZoomMode.Full) { r.X *= 4; r.Y *= 4; r.Width *= 4; r.Height *= 4; }
