@@ -214,15 +214,15 @@ struct Property
   
   public static List ToNumPair(object value)
   { const string error = "Not a valid number pair.";
-    List list;
+    List list = new List();
     if(value is List)
-    { list = (List)value;
-      if(list.Length!=2) throw new ApplicationException(error);
-      list.GetFloat(0); list.GetFloat(1);
+    { List ol = (List)value;
+      if(ol.Length!=2) throw new ApplicationException(error);
+      list.Add(ol.GetFloat(0));
+      list.Add(ol.GetFloat(1));
     }
     else if(value is string)
     { string[] parts = ((string)value).Split(',');
-      list = new List();
       list.Add(Convert.ToDouble(parts[0]));
       list.Add(Convert.ToDouble(parts[1]));
     }
@@ -445,7 +445,7 @@ class Object
           case "string": value=value.ToString(); break;
           case "bool": value=Convert.ToBoolean(value); break;
           case "color": value=Property.ToColor(value); break;
-          case "numPair": value=Property.ToNumPair(value); break;
+          case "numPair": value=Property.ToNumPair(list.Length>1 ? list : value); break;
         }
         return value;
       }
@@ -457,7 +457,8 @@ class Object
       if(error!=null) throw new ArgumentException(error);
       List list = data[property];
       if(list==null) data.Add(new List(property, value));
-      else list[0] = value;
+      else if(list.Length==1) list[0] = value;
+      else { list.Clear(); list.Add(value); }
     }
   }
 
@@ -495,16 +496,20 @@ class Object
     foreach(Property prop in type.Properties)
     { object value = this[prop.Name];
       if(value!=null)
-      { if(prop.Type=="color")
-        { Color c = (Color)value;
-          value = string.Format("\"{0},{1},{2}\"", c.R, c.G, c.B);
-        }
-        if(prop.Type=="string")
+      { if(prop.Type=="string")
         { string s = (string)value;
           if(s.IndexOf('\"')!=-1) value = "'" + s + '\'';
           else value = "\"" + s + '\"';
         }
+        else if(prop.Type=="numPair")
+        { List list = (List)value;
+          value = string.Format("{0} {1}", list[0], list[1]);
+        }
         else if(prop.Type=="bool") value = (bool)value ? 1 : 0;
+        else if(prop.Type=="color")
+        { Color c = (Color)value;
+          value = string.Format("\"{0},{1},{2}\"", c.R, c.G, c.B);
+        }
         writer.Write(" ({0} {1})", prop.Name, value);
       }
     }

@@ -51,7 +51,7 @@ class List : IEnumerable
 
   public void Add(object o) { if(o==null) throw new ArgumentNullException(); items.Add(o); }
 
-  public void Clear() { Name=string.Empty; items.Clear(); }
+  public void Clear() { items.Clear(); }
   
   public double GetFloat(int index) { return (double)items[index]; }
   public int GetInt(int index) { return (int)(double)items[index]; }
