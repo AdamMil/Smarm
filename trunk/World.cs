@@ -68,6 +68,8 @@ class World : IDisposable
   }
 
   public void Clear() { Clear(false); }
+  
+  public void ClearZoomTiles() { foreach(Layer layer in layers) layer.ClearZoomTiles(); }
 
   public void Compile(string directory)
   { string path = directory.Replace('\\', '/');
@@ -321,6 +323,7 @@ class World : IDisposable
       outfile.Close();
       if(File.Exists(path+"images.fsf")) File.Delete(path+"images.fsf");
       File.Move(path+"_images.fsf", path+"images.fsf");
+      foreach(string png in Directory.GetFiles(basePath, "*.png")) File.Delete(png);
       outfile = new FSFile(path+"images.fsf");
     }
     else outfile.Save();
@@ -336,6 +339,7 @@ class World : IDisposable
   void Clear(bool disposing)
   { if(fsFile!=null) { fsFile.Abandon(); fsFile=null; }
     if(tempPath) Directory.Delete(basePath, true);
+    else if(basePath!=null) foreach(string png in Directory.GetFiles(basePath, "*.png")) File.Delete(png);
 
     if(!disposing)
     { basePath = Path.GetTempFileName().Replace('\\', '/');
