@@ -26,6 +26,12 @@ using ICSharpCode.SharpZipLib.Zip;
 namespace Smarm
 {
 
+struct ExportedImage
+{ public ExportedImage(Rectangle rect, string file) { Rect=rect; Filename=file; }
+  public Rectangle Rect;
+  public string Filename;
+}
+
 class World : IDisposable
 { public World() { Clear(); }
   ~World() { Dispose(); }
@@ -85,7 +91,7 @@ class World : IDisposable
     GC.SuppressFinalize(this);
   }
 
-  public void EditRect(Rectangle rect, GameLib.Fonts.Font objectFont)
+  public ExportedImage ExportRect(Rectangle rect, GameLib.Fonts.Font objectFont)
   { // expand the rectangle dimensions to multiples of the block size
     int right = rect.Right, bottom = rect.Bottom;
     bool objects=false, polys=false;
@@ -103,7 +109,7 @@ class World : IDisposable
     Surface surface = new Surface(rect.Width*4, rect.Height*4, 32, SurfaceFlag.SrcAlpha);
     string file = Path.GetTempPath();
     if(file[file.Length-1] != '\\') file += '\\';
-    for(int i=0; i<10000; i++) if(!File.Exists(file+"smarm"+i+".psd")) { file += "smarm"+i+".psd"; break; } // race condition
+    for(int i=0; i<10000; i++) if(!File.Exists(file+"smarm"+i+".psd")) { file += "smarm"+i+".psd"; break; } // race condition, blah
 
     PSDCodec codec = new PSDCodec();
     PSDImage image = new PSDImage();
@@ -154,14 +160,7 @@ class World : IDisposable
     if(objects)
     { surface.Fill(0);
       foreach(Layer layer in layers)
-        foreach(Object obj in layer.Objects)
-          if(obj.Bounds.IntersectsWith(rect))
-          { Rectangle r = obj.Bounds;
-            r.Location = PolyOffset(r.Location, rect.Location);
-            r.Width *= 4; r.Height *= 4;
-            Primitives.Box(surface, r, Color.White);
-            if(objectFont!=null) objectFont.Render(surface, obj.Name, r, ContentAlignment.MiddleCenter);
-          }
+        layer.RenderObjects(surface, rect.X*4, rect.Y*4, surface.Bounds, ZoomMode.Full, null, objectFont);
       codec.WriteLayer(surface);
     }
     else codec.WriteLayer(null);
@@ -169,31 +168,41 @@ class World : IDisposable
     surface.Fill(0);
     codec.WriteFlattened(surface);
     codec.FinishWriting();
+    surface.Dispose();
     
+    return new ExportedImage(rect, file);
+  }
+
+  public void ImportImage(ExportedImage exp)
+  { PSDCodec codec=null;
+    Surface  surface=null;
     try
-    { surface.Dispose();
-      bool fs = App.Fullscreen;
-      App.Fullscreen = false;
-      System.Diagnostics.Process proc = System.Diagnostics.Process.Start(App.EditorPath, file);
-      proc.WaitForExit();
-      App.Fullscreen = fs;
-      surface = new Surface(rect.Width*4, rect.Height*4, 32, SurfaceFlag.SrcAlpha);
-      
-      image = codec.StartReading(file);
-      codec.SkipLayer(); // skip the background
-      for(int i=0; i<layers.Length && i<image.Layers.Length-1; i++)
-        if(layers[i].Width>0 || image.Layers[i+1].Width>0)
-        { PSDLayer layer = codec.ReadNextLayer();
-          surface.Fill(0);
-          layer.Surface.UsingAlpha = false;
-          layer.Surface.Blit(surface, layer.Location);
-          layer.Surface.Dispose();
-          layers[i].InsertSurface(surface, rect.X*4, rect.Y*4);
-          changed = true;
+    { codec = new PSDCodec();
+      PSDImage image = codec.StartReading(exp.Filename);
+      surface = new Surface(exp.Rect.Width*4, exp.Rect.Height*4, 32, SurfaceFlag.SrcAlpha);
+      for(int i=0; i<image.Layers.Length; i++)
+      { PSDLayer layer = image.Layers[i];
+        if(layer.Name.IndexOf("Layer ")==0 && layer.Name.Length>6)
+        { try
+          { int n = int.Parse(layer.Name.Substring(6));
+            codec.ReadNextLayer();
+
+            surface.Fill(0);
+            layer.Surface.UsingAlpha = false;
+            layer.Surface.Blit(surface, layer.Location);
+            layer.Surface.Dispose();
+            layers[n].InsertSurface(surface, exp.Rect.X*4, exp.Rect.Y*4);
+            changed = true;
+          }
+          catch { codec.SkipLayer(); }
         }
         else codec.SkipLayer();
+      }
     }
-    finally { if(codec.Reading) codec.FinishReading(); File.Delete(file); }
+    finally
+    { if(codec!=null && codec.Reading) codec.FinishReading();
+      if(surface!=null) surface.Dispose();
+    }
   }
 
   public void InsertLayer(int pos)
@@ -232,12 +241,10 @@ class World : IDisposable
     finally { fs.Close(); }
   }
 
-  public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom)
-  { foreach(Layer layer in layers) layer.Render(dest, sx, sy, drect, zoom, false, null, true);
-  }
-  public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom, int layer, Object hilite)
+  public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
+                     int objectLayer, Object hilite)
   { for(int i=0; i<layers.Length; i++)
-      layers[i].Render(dest, sx, sy, drect, zoom, layer==AllLayers || layer==i, hilite, true);
+      layers[i].Render(dest, sx, sy, drect, zoom, objectLayer==AllLayers || objectLayer==i, hilite, true);
   }
 
   public void Save(string directory)

@@ -70,13 +70,15 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
-    menu.Add(new MenuItem("Edit in paint program", 'E')).Click += new EventHandler(editRect_OnClick);
-    menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(KeyMod.None, Key.F4))).Click += new EventHandler(objectProps_OnClick);
+    menu.Add(new MenuItem("Edit in paint program", 'E', new KeyCombo(Key.F5))).Click += new EventHandler(editRect_OnClick);
+    menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L'));
     menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
     menu.Add(new MenuItem("Toggle Fullscreen", 'F', new KeyCombo(KeyMod.Alt, Key.Enter))).Click += new EventHandler(toggleFullscreen_OnClick);
+    menu.Add(new MenuItem("Toggle Objects", 'O', new KeyCombo(Key.F2))).Click += new EventHandler(toggleObjects_OnClick);
+    menu.Add(new MenuItem("Toggle Polygons", 'P', new KeyCombo(Key.F3))).Click += new EventHandler(togglePolygons_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Add(new MenuItem("Dummy item"));
@@ -176,7 +178,7 @@ class TopBar : ContainerControl
     }
   }
 
-  public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
+  public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new SmarmQuitEvent()); }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -212,6 +214,12 @@ class TopBar : ContainerControl
   }
 
   void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
+  void toggleObjects_OnClick(object sender, EventArgs e)
+  { App.Desktop.World.ShowObjects = !App.Desktop.World.ShowObjects;
+  }
+  void togglePolygons_OnClick(object sender, EventArgs e)
+  { App.Desktop.World.ShowPolygons = !App.Desktop.World.ShowPolygons;
+  }
 
   void toggleAntialias_OnClick(object sender, EventArgs e) { App.AntialiasText = !App.AntialiasText; }
 
@@ -322,6 +330,7 @@ class WorldDisplay : Control
             lbl.Menu.Add(item);
           }
           ZoomMode = ZoomMode.Normal;
+          ShowObjects = true;
           App.Desktop.TopBar.ModeText = "Obj";
         }
         else if(editMode==EditMode.Polygons)
@@ -332,9 +341,13 @@ class WorldDisplay : Control
             item.Tag = type;
             lbl.Menu.Add(item);
           }
+          ShowPolygons = true;
           App.Desktop.TopBar.ModeText = "Poly";
         }
-        else App.Desktop.TopBar.ModeText = "View";
+        else
+        { App.Desktop.TopBar.ModeText = "View";
+          ShowPolygons = ShowObjects = true;
+        }
         SelectedType = lbl.Menu.Controls.Count>0 ? lbl.Menu.Controls[0].Text : "";
         selectedPoly = null;
         selectedObject = null;
@@ -351,6 +364,7 @@ class WorldDisplay : Control
       { if(value==-1) EditMode = EditMode.ViewOnly;
         layer = value;
         App.Desktop.TopBar.LayerText = layer==-1 ? "All Layers" : "Layer "+layer;
+        selectedObject = null;
         Invalidate();
       }
     }
@@ -360,6 +374,16 @@ class WorldDisplay : Control
   { get { return App.Desktop.TopBar.TypeMenu.Text; }
     set { App.Desktop.TopBar.TypeMenu.Text=value; }
   }
+  
+  public bool ShowObjects
+  { get { return showObjs; }
+    set { if(value!=showObjs) { showObjs=value; Invalidate(); } }
+  }
+  
+  public bool ShowPolygons
+  { get { return showPolys; }
+    set { if(value!=showPolys) { showPolys=value; Invalidate(); } }
+  }
 
   public World World { get { return world; } }
   
@@ -367,13 +391,15 @@ class WorldDisplay : Control
   { get { return zoom; }
     set
     { if(value!=zoom)
-      { int z=(int)zoom, v=(int)value;
+      { Point cp = new Point(Width/2, Height/2), c1 = WindowToWorld(cp), c2;
         switch(zoom=value)
         { case ZoomMode.Full: App.Desktop.TopBar.ZoomText = "4x"; break;
           case ZoomMode.Normal: App.Desktop.TopBar.ZoomText = "1x"; break;
           case ZoomMode.Tiny: App.Desktop.TopBar.ZoomText = ".25x"; break;
         }
         if(zoom!=ZoomMode.Normal && EditMode==EditMode.Objects) EditMode=EditMode.ViewOnly;
+        c2 = WindowToWorld(cp);
+        x -= (c2.X-c1.X)*4; y -= (c2.Y-c1.Y)*4;
         Invalidate();
       }
     }
@@ -416,11 +442,27 @@ class WorldDisplay : Control
 
       App.Desktop.StatusText = "Waiting for edit to complete...";
       try
-      { world.EditRect(selectedRect, Font);
+      { ExportedImage image = world.ExportRect(selectedRect, Font);
+        bool fs = App.Fullscreen;
+        if(fs) App.Fullscreen = false;
+        System.Diagnostics.Process.Start(App.EditorPath, image.Filename);
+        App.Fullscreen = fs;
+        switch(MessageBox.Show(Desktop, "Import image",
+                               "What do you want to do with the exported image ("+image.Filename+")?"+
+                               " Choose an option after you're finished editing the image.",
+                               new string[] { "Import & Delete", "Import & Keep", "Ignore & Delete", "Ignore & Keep" }))
+        { case 0: world.ImportImage(image); System.IO.File.Delete(image.Filename); break;
+          case 1: world.ImportImage(image); break;
+          case 2: System.IO.File.Delete(image.Filename); break;
+        }
+
         Invalidate();
         App.Desktop.StatusText = "Import completed.";
       }
-      catch(Exception e) { MessageBox.Show(Desktop, "Error occurred", e.Message); }
+      catch(Exception e)
+      { App.Desktop.StatusText = "An error occurred during the export/import process.";
+        MessageBox.Show(Desktop, "Error occurred", e.Message);
+      }
       return;
 
       abort:
@@ -461,9 +503,10 @@ class WorldDisplay : Control
     int xoff=e.DisplayRect.X, yoff=e.DisplayRect.Y;
     if(zoom==ZoomMode.Normal) { xoff*=4; yoff*=4; }
     else if(zoom==ZoomMode.Tiny) { xoff*=16; yoff*=16; }
-    if(!drawAll && editMode==EditMode.Polygons) world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom);
-    else world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom, drawAll ? -1 : layer, selectedObject);
+    world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom,
+                 showAll ? World.AllLayers : showObjs ? layer : World.NoLayer, selectedObject);
 
+    if(!showPolys) return;
     foreach(Polygon poly in world.Polygons)
     { Rectangle rect = WorldToWindow(poly.Bounds);
       rect.Inflate(1, 1);
@@ -567,15 +610,50 @@ class WorldDisplay : Control
     { selectMode=SelectMode.None;
       e.Handled=true;
     }
-    else if(e.KE.Key==Key.Tab && e.KE.KeyMods==KeyMod.None && !drawAll)
-    { drawAll=!drawAll;
+    else if(e.KE.Key==Key.Tab && !showAll)
+    { showAll=true;
       Invalidate();
       e.Handled=true;
     }
-    else if(e.KE.Key==Key.Home && e.KE.KeyMods==KeyMod.None)
-    { x = y = 0;
-      Invalidate();
-      e.Handled = true;
+    else if(e.KE.KeyMods==KeyMod.None)
+    { if(e.KE.Key==Key.Home)
+      { x = y = 0;
+        Invalidate();
+        e.Handled = true;
+      }
+      else if(e.KE.Char=='[')
+      { switch(zoom)
+        { case ZoomMode.Full:   ZoomMode=ZoomMode.Normal; break;
+          case ZoomMode.Normal: ZoomMode=ZoomMode.Tiny; break;
+          case ZoomMode.Tiny:   ZoomMode=ZoomMode.Full; break;
+        }
+        e.Handled = true;
+      }
+      else if(e.KE.Char==']')
+      { switch(zoom)
+        { case ZoomMode.Full:   ZoomMode=ZoomMode.Tiny; break;
+          case ZoomMode.Normal: ZoomMode=ZoomMode.Full; break;
+          case ZoomMode.Tiny:   ZoomMode=ZoomMode.Normal; break;
+        }
+        e.Handled = true;
+      }
+      else if(e.KE.Char=='p')
+      { EditMode = EditMode.Polygons;
+        e.Handled = true;
+      }
+      else if(e.KE.Char=='o')
+      { EditMode = EditMode.Objects;
+        e.Handled = true;
+      }
+      else if(e.KE.Key==Key.Backquote)
+      { SelectedLayer = 0;
+        e.Handled = true;
+      }
+      else if(e.KE.Char>='0' && e.KE.Char<='9')
+      { int layer = e.KE.Char-'0';
+        if(layer<world.Layers.Length) SelectedLayer = layer;
+        e.Handled = true;
+      }
     }
     else if(editMode==EditMode.Polygons)
     { e.Handled=true;
@@ -606,6 +684,15 @@ class WorldDisplay : Control
     }
     if(e.Handled) Desktop.StopKeyRepeat();
     base.OnKeyDown(e);
+  }
+
+  protected override void OnKeyUp(KeyEventArgs e)
+  { if(e.KE.Key==Key.Tab && showAll)
+    { showAll=false;
+      Invalidate();
+      e.Handled=true;
+    }
+    base.OnKeyUp(e);
   }
 
   protected override void OnDragStart(DragEventArgs e)
@@ -675,7 +762,7 @@ class WorldDisplay : Control
       for(int i=0; i<poly.Points.Length; i++)
       { Point p = WorldToWindow(poly.Points[i]);
         int xd=p.X-pt.X, yd=p.Y-pt.Y;
-        if(xd*xd+yd*yd<=25)
+        if(xd*xd+yd*yd<=32)
         { selectedPoly = poly;
           selectedPoint = i;
           Invalidate(poly);
@@ -819,7 +906,7 @@ class WorldDisplay : Control
   SubMode  subMode, oldSubMode;
   ZoomMode zoom;
   SelectMode selectMode;
-  bool     drawAll;
+  bool     showAll, showObjs, showPolys;
 }
 #endregion
 
