@@ -72,6 +72,20 @@ class Layer : IDisposable
     SyncScaledSizes(); // if the insertion enlarged the world size, enlarge the scaled arrays to match
   }
 
+  public void MoveRect(Rectangle rect, int xo, int yo)
+  { foreach(Object obj in objects)
+    { Point pt = obj.Location;
+      pt.Offset(obj.Width/2, obj.Height/2);
+      if(rect.Contains(pt))
+      { pt = obj.Location;
+        pt.Offset(xo, yo);
+        obj.Location = pt;
+      }
+    }
+    
+    // TODO: move the tiles
+  }
+
   /* render the world starting at full-coord fx,fy into dest's drect using the zoom level specified */
   public void Render(Surface dest, int fx, int fy, Rectangle drect, ZoomMode zoom,
                      bool renderObjects, Object[] hilite, bool blend)
