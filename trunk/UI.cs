@@ -281,6 +281,8 @@ class BottomBar : ContainerControl
 { public BottomBar()
   { BackColor = SystemColors.Control;
     ForeColor = SystemColors.ControlText;
+    lblStatus.Bounds = new Rectangle(3, 2, Width-6, Height-4);
+    lblStatus.Anchor = AnchorStyle.All;
     Controls.Add(lblStatus);
   }
 
@@ -292,11 +294,6 @@ class BottomBar : ContainerControl
     Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top+1, SystemColors.ControlDark);
   }
 
-  protected override void OnResize(EventArgs e)
-  { lblStatus.Bounds = new Rectangle(3, 2, Width-6, Height-4);
-    base.OnResize(e);
-  }
-  
   Label lblStatus = new Label(string.Format("Smarm version {0} loaded.", App.Version));
 }
 #endregion
@@ -1306,6 +1303,12 @@ class SmarmDesktop : DesktopControl
   { AutoFocusing = AutoFocus.None;
     KeyPreview   = true;
     KeyRepeatDelay = 350;
+    topBar.Dock = DockStyle.Top;
+    topBar.Bounds = new Rectangle(0, 0, 0, 32);
+    bottomBar.Dock = DockStyle.Bottom;
+    bottomBar.Bounds = new Rectangle(0, 0, 0, 32);
+    world.Bounds = Bounds;
+    world.Anchor = AnchorStyle.All;
     Controls.AddRange(topBar, bottomBar, world);
     world.Focus();
   }
@@ -1324,13 +1327,6 @@ class SmarmDesktop : DesktopControl
     }
     if(!e.Handled && ModalWindow==null && topBar.MenuBar.HandleKey(e.KE)) e.Handled = true;
     base.OnKeyDown(e);
-  }
-
-  protected override void OnResize(EventArgs e)
-  { topBar.Bounds = new Rectangle(0, 0, Width, 32);
-    bottomBar.Bounds = new Rectangle(0, Height-32, Width, 32);
-    world.Bounds = new Rectangle(0, 32, Width, Height-32-32);
-    base.OnResize(e);
   }
 
   TopBar topBar = new TopBar();
@@ -1402,8 +1398,8 @@ class ObjectProperties : Form
         height += btnHeight;
       }
 
-      Size = new Size(width, height+ypad);
-      Location = new Point((desktop.Width-Width)/2, (desktop.Height-Height)/2);
+      Size size = new Size(width, height+ypad);
+      SetBounds(new Point((desktop.Width-size.Width)/2, (desktop.Height-size.Height)/2), size, BoundsMode.Absolute);
     }
     DialogResult = false;
     if(focus==AutoFocus.None) desktop.AutoFocusing = AutoFocus.Click;
