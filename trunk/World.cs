@@ -118,6 +118,7 @@ class World : IDisposable
   public void Clear()
   { foreach(Layer layer in layers) if(layer!=null) layer.Dispose();
     layers=new Layer[0];
+    polygons.Clear();
     changed=false;
   }
 

@@ -94,17 +94,17 @@
                     BuildAction = "Compile"
                 />
                 <File
-                    RelPath = "Editor.cs"
-                    SubType = "Code"
-                    BuildAction = "Compile"
-                />
-                <File
                     RelPath = "Layer.cs"
                     SubType = "Code"
                     BuildAction = "Compile"
                 />
                 <File
                     RelPath = "List.cs"
+                    SubType = "Code"
+                    BuildAction = "Compile"
+                />
+                <File
+                    RelPath = "Objects.cs"
                     SubType = "Code"
                     BuildAction = "Compile"
                 />

@@ -1,4 +1,3 @@
-// TODO: fix display of "toggle antialias" menu item
 using System;
 using System.Drawing;
 using GameLib;
@@ -18,7 +17,7 @@ class MenuLabel : Label
   protected override void OnMouseEnter(EventArgs e) { over=true;  Invalidate(); }
   protected override void OnMouseLeave(EventArgs e) { over=false; Invalidate(); }
   protected override void OnPaintBackground(PaintEventArgs e)
-  { if(over)
+  { if(over && menu!=null && menu.Controls.Count>0)
     { Color old = RawBackColor, back = BackColor;
       BackColor = Color.FromArgb(back.R+(255-back.R)/8, back.G+(255-back.G)/8, back.B+(255-back.B)/8);
       base.OnPaintBackground(e);
@@ -27,8 +26,8 @@ class MenuLabel : Label
     else base.OnPaintBackground(e);
   }
   protected override void OnMouseDown(ClickEventArgs e)
-  { if(!e.Handled && e.CE.Button==0 && menu!=null)
-    { menu.Show(this, new Point(0, Height), true);
+  { if(!e.Handled && e.CE.Button==0 && menu!=null && menu.Controls.Count>0)
+    { menu.Show(this, new Point(TextAlign==ContentAlignment.TopLeft ? 0 : Width-30, Height), true);
       e.Handled=true;
     }
     base.OnMouseClick(e);
@@ -64,7 +63,7 @@ class TopBar : ContainerControl
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
-    
+
     lblZoom.Menu = new Menu();
     lblZoom.Menu.Add(new MenuItem("Size to window", 'S'));
     lblZoom.Menu.Add(new MenuItem("Render size (0.5x)", 'R'));
@@ -76,13 +75,15 @@ class TopBar : ContainerControl
       lblMode.Menu.Add(new MenuItem("Polygons", 'P')).Click += click;
       lblMode.Menu.Add(new MenuItem("View only", 'V')).Click += click;
     }
+    
+    lblType.Menu = new Menu();
 
     foreach(Menu m in menuBar.Menus)
     { m.BackColor = BackColor;
       m.SelectedBackColor = Color.FromArgb(80, 80, 80);
       m.SelectedForeColor = Color.White;
     }
-    foreach(Menu m in new MenuBase[] { lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
+    foreach(Menu m in new MenuBase[] { lblLayer.Menu, lblZoom.Menu, lblMode.Menu, lblType.Menu })
     { m.BackColor = BackColor;
       m.SelectedBackColor = Color.FromArgb(80, 80, 80);
       m.SelectedForeColor = Color.White;
@@ -92,18 +93,21 @@ class TopBar : ContainerControl
     lblMouse.Bounds = new Rectangle(Width-lblWidth, lblHeight, lblWidth, lblHeight);
     lblMode.Bounds  = new Rectangle(Width-lblWidth*2-lblPadding, 0, lblWidth, lblHeight);
     lblZoom.Bounds  = new Rectangle(Width-lblWidth*2-lblPadding, lblHeight, lblWidth, lblHeight);
-    lblLayer.Anchor = lblMouse.Anchor = lblMode.Anchor = lblZoom.Anchor = AnchorStyle.TopRight;
+    lblType.Bounds  = new Rectangle(Width-lblWidth*4-lblPadding*2, 0, lblWidth*2, lblHeight);
+    lblType.TextAlign = ContentAlignment.TopRight;
+    lblLayer.Anchor = lblMouse.Anchor = lblMode.Anchor = lblZoom.Anchor = lblType.Anchor = AnchorStyle.TopRight;
 
     lblLayer.Text = "Layer 0";
     lblMouse.Text = "0x0";
     lblMode.Text  = "Mode: View";
     lblZoom.Text  = "Zoom: Full";
-    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, menuBar);
+    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, lblType, menuBar);
     #endregion
   }
 
   public MenuBar MenuBar { get { return menuBar; } }
   public string MouseText { set { lblMouse.Text=value; } }
+  public MenuLabel TypeMenu { get { return lblType; } }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -210,7 +214,7 @@ class TopBar : ContainerControl
   #endregion
 
   const int lblWidth=64, lblHeight=16, lblPadding=6;
-  MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel();
+  MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel(), lblType=new MenuLabel();
   Label  lblMouse=new Label();
   MenuBar menuBar=new MenuBar();
   
@@ -253,13 +257,43 @@ class WorldDisplay : Control
   { get { return editMode; }
     set
     { if(value!=editMode)
-      { subMode=SubMode.None;
+      { App.Desktop.StatusText = "Entered "+value.ToString()+" mode.";
+        subMode=SubMode.None;
         editMode=value;
+
+        if(typeSel==null) typeSel = new EventHandler(type_OnSelect);
+        MenuLabel lbl = App.Desktop.TopBar.TypeMenu;
+        lbl.Menu.Clear();
+        if(editMode==EditMode.Objects)
+        { foreach(ObjectDef obj in ObjectDef.Objects)
+          { MenuItem item = new MenuItem(obj.Name);
+            item.VerticalPadding = 1;
+            item.Click += typeSel;
+            item.Tag = obj;
+            lbl.Menu.Add(item);
+          }
+          lbl.Text = "Select object type";
+        }
+        else if(editMode==EditMode.Polygons)
+        { foreach(PolygonType type in PolygonType.Types)
+          { MenuItem item = new MenuItem(type.Type);
+            item.VerticalPadding = 1;
+            item.Click += typeSel;
+            item.Tag = type;
+            lbl.Menu.Add(item);
+          }
+          SelectedType = lbl.Menu.Controls.Count>0 ? lbl.Menu.Controls[0].Text : "";
+        }
+        else SelectedType = "";
         Invalidate();
       }
     }
   }
 
+  public string SelectedType
+  { get { return App.Desktop.TopBar.TypeMenu.Text; }
+    set { App.Desktop.TopBar.TypeMenu.Text=value; }
+  }
   public World World { get { return world; } }
 
   public void Clear() { world.Clear(); x=y=0; Invalidate(); }
@@ -413,10 +447,22 @@ class WorldDisplay : Control
     Invalidate();
     subMode = SubMode.None;
   }
+  
+  void type_OnSelect(object sender, EventArgs e)
+  { if(editMode==EditMode.Objects)
+    { ObjectDef def = (ObjectDef)((MenuItemBase)sender).Tag;
+      App.Desktop.TopBar.TypeMenu.Text = def.Name;
+    }
+    else if(editMode==EditMode.Polygons)
+    { PolygonType def = (PolygonType)((MenuItemBase)sender).Tag;
+      App.Desktop.TopBar.TypeMenu.Text = def.Type;
+    }
+  }
 
   World world = new World();
+  EventHandler typeSel;
   int x, y, selectedPoint;
-  EditMode editMode;
+  EditMode editMode=EditMode.ViewOnly;
   SubMode  subMode;
   Polygon  selectedPoly;
 }
