@@ -134,9 +134,11 @@ class List : IEnumerable
 
   void Write(TextWriter stream, int level)
   { stream.Write('(');
-    stream.Write(name);
-    foreach(object o in items)
-    { stream.Write(' ');
+    bool wrote = name!="";
+    if(wrote) stream.Write(name);
+    for(int i=0; i<items.Count; i++)
+    { if(wrote) stream.Write(' ');
+      object o = items[i];
       if(o is List)
       { if(level==0) stream.Write("\n  ");
         ((List)o).Write(stream, level+1);
@@ -149,6 +151,7 @@ class List : IEnumerable
         stream.Write(delim);
       }
       else stream.Write(o.ToString());
+      wrote=true;
     }
     stream.Write(')');
   }

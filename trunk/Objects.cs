@@ -16,8 +16,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-// TODO: add "vector" type (int pair)
-
 using System;
 using System.IO;
 using System.Drawing;
@@ -173,8 +171,16 @@ struct Property
         }
         return null;
       case "bool": return null;
+      case "numPair":
+        try
+        { List list = ToNumPair(value);
+          ValidateNumber(list.GetFloat(0));
+          ValidateNumber(list.GetFloat(1));
+        }
+        catch { return "Not a valid numPair"; }
+        return null;
     }
-    return null; // can't get here
+    return null; // shouldn't get here
   }
   
   public string ValidateNumber(double value)
@@ -206,6 +212,24 @@ struct Property
     else throw new ApplicationException("Not a valid color!");
   }
   
+  public static List ToNumPair(object value)
+  { const string error = "Not a valid number pair.";
+    List list;
+    if(value is List)
+    { list = (List)value;
+      if(list.Length!=2) throw new ApplicationException(error);
+      list.GetFloat(0); list.GetFloat(1);
+    }
+    else if(value is string)
+    { string[] parts = ((string)value).Split(',');
+      list = new List();
+      list.Add(Convert.ToDouble(parts[0]));
+      list.Add(Convert.ToDouble(parts[1]));
+    }
+    else throw new ApplicationException(error);
+    return list;
+  }
+
   static string EnumError(List limit, object value)
   { string s = value.ToString()+" is not a valid value for enum";
     for(int i=1; i<limit.Length; i++) s += (i==1 ? " (" : " ") + limit[i];
@@ -226,7 +250,7 @@ struct Property
 
   List data;
   
-  static string[] validTypes = new string[] { "int", "float", "string", "bool", "color" };
+  static string[] validTypes = new string[] { "int", "float", "string", "bool", "color", "numPair" };
   static string[] validLimiters = new string[] { "range", "enum" };
 }
 #endregion
@@ -421,6 +445,7 @@ class Object
           case "string": value=value.ToString(); break;
           case "bool": value=Convert.ToBoolean(value); break;
           case "color": value=Property.ToColor(value); break;
+          case "numPair": value=Property.ToNumPair(value); break;
         }
         return value;
       }
