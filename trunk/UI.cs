@@ -425,7 +425,7 @@ class WorldDisplay : Control
         if(editMode==EditMode.Objects)
         { foreach(ObjectDef obj in ObjectDef.Objects)
           { MenuItem item = new MenuItem(obj.Name);
-            item.VerticalPadding = 1;
+            item.Padding = new RectOffset(0, 1);
             item.Click += typeSel;
             item.Tag = obj;
             lbl.Menu.Add(item);
@@ -442,7 +442,7 @@ class WorldDisplay : Control
         else if(editMode==EditMode.Polygons)
         { foreach(PolygonType type in PolygonType.Types)
           { MenuItem item = new MenuItem(type.Type);
-            item.VerticalPadding = 1;
+            item.Padding = new RectOffset(0, 1);
             item.Click += typeSel;
             item.Tag = type;
             lbl.Menu.Add(item);
