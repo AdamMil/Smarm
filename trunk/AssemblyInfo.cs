@@ -22,4 +22,4 @@ using System.Runtime.CompilerServices;
 [assembly: AssemblyTitle("Smarm")]
 [assembly: AssemblyDescription("A world editor for Swarm")]
 [assembly: AssemblyCopyright("Copyright 2003-2004, Adam Milazzo")]
-[assembly: AssemblyVersion("1.17.*")]
+[assembly: AssemblyVersion("1.18.*")]

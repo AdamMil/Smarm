@@ -29,7 +29,7 @@ class SmarmQuitEvent : UserEvent { }
 
 class App
 { private App() { }
-  static App() { Init(); }
+  static App() { Init(); desktop = new SmarmDesktop(); }
 
   public static SmarmDesktop Desktop { get { return desktop; } }
 
@@ -88,8 +88,16 @@ class App
       else if(e is QuitEvent) App.Desktop.TopBar.Exit(); // no encapsulation, blah
       else if(e is SmarmQuitEvent) return false;
     }
-    else desktop.UpdateDisplay();
+    if(desktop.Updated && Timing.Msecs-lastUpdate>33)
+    { desktop.UpdateDisplay();
+      lastUpdate = Timing.Msecs;
+    }
     return true;
+  }
+  
+  static bool IdleProc()
+  { if(desktop.UpdateDisplay()) lastUpdate = Timing.Msecs;
+    return false;
   }
 
   static void Main()
@@ -103,7 +111,7 @@ class App
     SetMode(640, 544);
 
     Events.Initialize();
-    Events.PumpEvents(new EventProcedure(EventProc));
+    Events.PumpEvents(new EventProcedure(EventProc), new IdleProcedure(IdleProc));
 
     desktop.World.World.Dispose(); // bad bad bad.. where's the encapsulation?
 
@@ -145,9 +153,10 @@ class App
     objs.Close();
   }
 
-  static SmarmDesktop desktop = new SmarmDesktop();
+  static SmarmDesktop desktop;
   static Object setup;
   static int    oldHeight, oldWidth, maxTiles;
+  static uint   lastUpdate;
   static bool   fullscreen;
 }
 

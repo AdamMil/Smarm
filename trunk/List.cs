@@ -117,21 +117,20 @@ class List : IEnumerable
         }
         Add(double.Parse(value));
       }
-      else
+      else if(read=='\"' || read=='\'')
       { stream.Read();
-        if(read=='\"' || read=='\'')
-        { string value=string.Empty;
-          int delim=read;
-          while(true)
-          { read=stream.Read();
-            if(read==-1) throw new EndOfStreamException("Unterminated string");
-            if(read==delim) break;
-            value += (char)read;
-          }
-          Add(value);
+        string value=string.Empty;
+        int delim=read;
+        while(true)
+        { read=stream.Read();
+          if(read==-1) throw new EndOfStreamException("Unterminated string");
+          if(read==delim) break;
+          value += (char)read;
         }
-        else if(read==')') break;
+        Add(value);
       }
+      else if(read==')') { stream.Read(); return; }
+      else throw new ArgumentException(string.Format("Unknown character '{0}'", (char)read));
     }
   }
 
