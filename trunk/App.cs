@@ -41,11 +41,11 @@ class App
   public static SmarmDesktop Desktop { get { return desktop; } }
 
   public static bool AntialiasText
-  { get { return ((GameLib.Fonts.TrueTypeFont)desktop.Font).RenderStyle == GameLib.Fonts.RenderStyle.Shaded; }
+  { get { return ((GameLib.Fonts.TrueTypeFont)desktop.Font).RenderStyle != GameLib.Fonts.RenderStyle.Solid; }
     set
     { if(value!=AntialiasText)
       { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)desktop.Font;
-        font.RenderStyle = value ? GameLib.Fonts.RenderStyle.Shaded : GameLib.Fonts.RenderStyle.Solid;
+        font.RenderStyle = value ? GameLib.Fonts.RenderStyle.Blended : GameLib.Fonts.RenderStyle.Solid;
         desktop.Invalidate();
       }
     }
@@ -65,11 +65,11 @@ class App
     }
   }
 
-  public static string EditorPath { get { return (string)setup["editorPath"]; } }
+  public static string EditorPath  { get { return (string)setup["editorPath"]; } }
   public static string CompilePost { get { return (string)setup["compilePost"]; } }
-  public static int    MaxTiles   { get { return maxTiles; } }
-  public static string SmarmPath  { get { return (string)setup["dataPath"]; } }
-  public static string SpritePath { get { return (string)setup["spritePath"]; } }
+  public static int    MaxTiles    { get { return maxTiles; } }
+  public static string SmarmPath   { get { return (string)setup["dataPath"]; } }
+  public static string SpritePath  { get { return (string)setup["spritePath"]; } }
   public static Object SetupObject { get { return setup; } }
 
   public static string Version
