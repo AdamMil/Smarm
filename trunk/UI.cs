@@ -16,10 +16,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-// TODO: change shift-click to ctrl-click for poly
-// TODO: make shift-click align on nearest axis
-// TODO: make points be a 9-diameter circle
-// TODO: allow points to be dragged even during NewPoly state
 using System;
 using System.Drawing;
 using GameLib;
@@ -482,18 +478,13 @@ class WorldDisplay : Control
       { if(poly.Points.Length>1)
           Primitives.Line(e.Surface, WorldToWindow(poly.Points[0]), WorldToWindow(poly.Points[1]), c);
         for(int i=0; i<poly.Points.Length; i++)
-        { Point p = WorldToWindow(new Point(poly.Points[i].X, poly.Points[i].Y));
-          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
-        }
+          Primitives.Circle(e.Surface, WorldToWindow(new Point(poly.Points[i].X, poly.Points[i].Y)), 4, c);
       }
       else
       { Point[] points = (Point[])poly.Points.Clone();
         for(int i=0; i<points.Length; i++) points[i] = WorldToWindow(points[i]);
         Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
-        for(int i=0; i<points.Length; i++)
-        { Point p=points[i];
-          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
-        }
+        for(int i=0; i<points.Length; i++) Primitives.Circle(e.Surface, points[i], 4, c);
       }
     }
   }
@@ -527,7 +518,7 @@ class WorldDisplay : Control
     { if(e.CE.Button==0)
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(subMode==SubMode.None)
-        { if(Keyboard.HasOnlyKeys(KeyMod.Shift) || !ClickVertex(e.CE.Point))
+        { if(Keyboard.HasOnlyKeys(KeyMod.Ctrl) || !ClickVertex(e.CE.Point))
           { if(selectedPoly!=null) Invalidate(selectedPoly);
             selectedPoly = new Polygon(SelectedType);
             world.Polygons.Add(selectedPoly);
@@ -535,7 +526,13 @@ class WorldDisplay : Control
           }
         }
         if(subMode==SubMode.NewPoly)
-        { selectedPoly.AddPoint(e.CE.Point);
+        { if(Keyboard.HasOnlyKeys(KeyMod.Shift) && selectedPoly.Points.Length>0)
+          { Point last = selectedPoly.Points[selectedPoly.Points.Length-1];
+            int xd = Math.Abs(e.CE.X-last.X), yd = Math.Abs(e.CE.Y-last.Y);
+            if(yd>xd) e.CE.X=last.X;
+            else e.CE.Y=last.Y;
+          }
+          selectedPoly.AddPoint(e.CE.Point);
           Invalidate(selectedPoly);
           world.ChangedSinceSave = true;
         }
@@ -613,9 +610,9 @@ class WorldDisplay : Control
 
   protected override void OnDragStart(DragEventArgs e)
   { if(editMode==EditMode.Polygons)
-    { if(subMode==SubMode.None)
+    { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
       { if(e.Buttons==1)
-        { if(ClickVertex(WindowToWorld(e.Start))) subMode=SubMode.DragSelected;
+        { if(ClickVertex(WindowToWorld(e.Start))) { oldSubMode=subMode; subMode=SubMode.DragSelected; }
           else e.Cancel=true;
           goto done;
         }
@@ -647,9 +644,11 @@ class WorldDisplay : Control
   protected override void OnDragEnd(DragEventArgs e)
   { if(e.Buttons==4) DragScroll(e);
     else if(e.Buttons==1 && subMode==SubMode.DragSelected)
-    { if(editMode==EditMode.Polygons) DragPoint(e);
-      else if(editMode==EditMode.Objects) DragObject(e);
-      subMode = SubMode.None;
+    { if(editMode==EditMode.Polygons) { DragPoint(e); subMode=oldSubMode; }
+      else
+      { if(editMode==EditMode.Objects) DragObject(e);
+        subMode = SubMode.None;
+      }
     }
     base.OnDragEnd(e);
   }
@@ -671,10 +670,12 @@ class WorldDisplay : Control
 
   #region Private methods
   bool ClickVertex(Point pt)
-  { foreach(Polygon poly in world.Polygons)
+  { pt = WorldToWindow(pt);
+    foreach(Polygon poly in world.Polygons)
       for(int i=0; i<poly.Points.Length; i++)
-      { Point p = poly.Points[i];
-        if(pt.X>=p.X-1 && pt.X<=p.X+1 && pt.Y>=p.Y-1 && pt.Y<=p.Y+1)
+      { Point p = WorldToWindow(poly.Points[i]);
+        int xd=p.X-pt.X, yd=p.Y-pt.Y;
+        if(xd*xd+yd*yd<=25)
         { selectedPoly = poly;
           selectedPoint = i;
           Invalidate(poly);
@@ -733,15 +734,11 @@ class WorldDisplay : Control
     }
   }
 
-  void Invalidate(Object obj)
-  { Rectangle rect = WorldToWindow(obj.Bounds);
-    rect.Inflate(4, 4);
-    Invalidate(rect);
-  }
+  void Invalidate(Object obj) { Invalidate(WorldToWindow(obj.Bounds)); }
   
   void Invalidate(Polygon poly)
   { Rectangle rect = WorldToWindow(poly.Bounds);
-    rect.Inflate(4, 4);
+    rect.Inflate(5, 5); // to account for the point markers
     Invalidate(rect);
   }
 
@@ -819,7 +816,7 @@ class WorldDisplay : Control
   Object    selectedObject;
   int x, y, layer, selectedPoint;
   EditMode editMode;
-  SubMode  subMode;
+  SubMode  subMode, oldSubMode;
   ZoomMode zoom;
   SelectMode selectMode;
   bool     drawAll;

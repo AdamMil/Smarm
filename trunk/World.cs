@@ -181,7 +181,7 @@ class World : IDisposable
       
       image = codec.StartReading(file);
       codec.SkipLayer(); // skip the background
-      for(int i=0; i<layers.Length; i++)
+      for(int i=0; i<layers.Length && i<image.Layers.Length-1; i++)
         if(layers[i].Width>0 || image.Layers[i+1].Width>0)
         { PSDLayer layer = codec.ReadNextLayer();
           surface.Fill(0);
@@ -192,9 +192,8 @@ class World : IDisposable
           changed = true;
         }
         else codec.SkipLayer();
-      codec.FinishReading();
     }
-    finally { File.Delete(file); }
+    finally { if(codec.Reading) codec.FinishReading(); File.Delete(file); }
   }
 
   public void InsertLayer(int pos)
