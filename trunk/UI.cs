@@ -30,6 +30,7 @@ class MenuLabel : Label
     { menu.Show(this, new Point(0, Height));
       e.Handled=true;
     }
+    base.OnMouseClick(e);
   }
 
   MenuBase menu;
@@ -53,7 +54,9 @@ class TopBar : ContainerControl
     editMenu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
     
     viewMenu = new Menu();
+    viewMenu.Popup += new EventHandler(viewMenu_Popup);
     viewMenu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
+    viewMenu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
     
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
@@ -126,8 +129,11 @@ class TopBar : ContainerControl
   }
 
   void Load()
-  { lastPath = FileChooser.Load(Desktop, FileType.Directory, lastPath);
-    App.Desktop.StatusText = lastPath+" loaded.";
+  { string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
+    if(file!="")
+    { lastPath = file;
+      App.Desktop.StatusText = lastPath+" loaded.";
+    }
   }
 
   bool Save()
@@ -137,7 +143,9 @@ class TopBar : ContainerControl
   }
 
   bool SaveAs()
-  { lastPath = FileChooser.Save(Desktop, FileType.Directory);
+  { string file = FileChooser.Save(Desktop, FileType.Directory);
+    if(file=="") return false;
+    lastPath = file;
     return Save();
   }
 
@@ -171,18 +179,15 @@ class TopBar : ContainerControl
 
   void exportRect_OnClick(object sender, EventArgs e) { ExportRect(); }
 
-  private void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
-  #endregion
+  void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
 
-  const int lblWidth=64, lblHeight=16, lblPadding=6;
-  Button btnFile=new Button("File"), btnEdit=new Button("Edit"), btnView=new Button("View");
-  MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel();
-  Label  lblMouse=new Label();
-  Menu   fileMenu, editMenu, viewMenu;
-  
-  string lastPath;
+  void toggleAntialias_OnClick(object sender, EventArgs e)
+  { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
+    font.RenderStyle = font.RenderStyle==GameLib.Fonts.RenderStyle.Shaded ? GameLib.Fonts.RenderStyle.Solid : GameLib.Fonts.RenderStyle.Shaded;
+    Desktop.Invalidate();
+  }
 
-  private void layerMenu_Popup(object sender, EventArgs e)
+  void layerMenu_Popup(object sender, EventArgs e)
   { Menu menu = (Menu)sender;
     menu.Clear();
     // TODO: populate from world
@@ -193,6 +198,21 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Layer 4", '4'));
     menu.Add(new MenuItem("New Layer", 'N'));
   }
+  
+  void viewMenu_Popup(object sender, EventArgs e)
+  { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
+    Menu menu = (Menu)sender;
+    menu.Controls[1].Text = "Toggle Antialiasing ("+(font.RenderStyle==GameLib.Fonts.RenderStyle.Shaded ? "on" : "off")+')';
+  }
+  #endregion
+
+  const int lblWidth=64, lblHeight=16, lblPadding=6;
+  Button btnFile=new Button("File"), btnEdit=new Button("Edit"), btnView=new Button("View");
+  MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel();
+  Label  lblMouse=new Label();
+  Menu   fileMenu, editMenu, viewMenu;
+  
+  string lastPath;
 }
 #endregion
 
