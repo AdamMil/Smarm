@@ -104,7 +104,7 @@ class App
 
     GameLib.Input.Input.Initialize();
     Video.Initialize();
-    SetMode(640, 480);
+    SetMode(640, 544);
 
     Events.Initialize();
     Events.PumpEvents(new EventProcedure(EventProc));

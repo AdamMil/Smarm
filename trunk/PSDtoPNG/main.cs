@@ -50,7 +50,7 @@ class App
 	    }
 	    output.Save(args[1], ImageType.PNG);
 	  }
-	  Console.WriteLine("(spriteset (file {0}) (elementwidth {1}))", Path.GetFileName(args[1]), psd.Width/4);
+	  Console.WriteLine("(spriteset (file \"{0}\") (elementwidth {1}))", Path.GetFileName(args[1]), psd.Width/4);
 	}
 
   static Surface ScaleDown(Surface s)

@@ -154,63 +154,15 @@ class Layer : IDisposable
   }
 
   public void Save(string path, System.IO.TextWriter writer, ZipOutputStream zip, int layerNum, bool compile)
-  { string header = string.Format("  (layer {0}", layerNum);
-    bool tiles=compile;
-
-    MemoryStream ms = new MemoryStream(4096);
-    string[,] surfaces = compile ? fourth : full;
-
-    for(int x=0,img=0; x<surfaces.GetLength(1); x++)
-      for(int y=0; y<surfaces.GetLength(0); y++)
-      { CachedSurface cs = GetSurface(surfaces, x, y);
-        if(cs==null && compile)
-        { ScaleDown(x, y, ZoomMode.Normal);
-          cs = GetSurface(surfaces, x, y);
-        }
-        if(cs!=null)
-        { if(!IsEmpty(cs.Surface))
-          { string fn = string.Format("layer{0}_{1}.png", layerNum, img++);
-            if(!tiles)
-            { writer.WriteLine(header);
-              writer.WriteLine("    (tiles");
-              tiles=true;
-            }
-            if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
-                                        fn, x*PartWidth, y*PartHeight, layerNum);
-            else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}))", fn, x*PartWidth, y*PartHeight);
-            if(zip==null) cs.Surface.Save(path+fn, ImageType.PNG);
-            else
-            { ms.Position = 0;
-              ms.SetLength(0);
-              cs.Surface.Save(ms, ImageType.PNG);
-              zip.PutNextEntry(new ZipEntry(fn));
-              IOH.CopyStream(ms, zip, true);
-            }
-            
-            if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
-            // update the filename. note that this leaves the array in an invalid state, but we'll fix it below.
-            // we can't fix it now because the new name might conflict with another tile having that name
-            cs.Name=fn;
-          }
-          else RemoveSurface(surfaces, x, y);
-        }
-      }
-
-    // fix up the filenames
-    for(int x=0; x<surfaces.GetLength(1); x++)
-      for(int y=0; y<surfaces.GetLength(0); y++)
-      { CachedSurface cs = GetSurface(surfaces, x, y);
-        if(cs!=null && cs.Name!=surfaces[y,x])
-        { LinkedList.Node node = (LinkedList.Node)this.surfaces[surfaces[y,x]];
-          this.surfaces.Remove(surfaces[y,x]);
-          this.surfaces[surfaces[y,x]=cs.Name] = node;
-        }
-      }
-
-    if(tiles) { if(!compile) writer.WriteLine("    )"); }
+  { if(compile) Save(path, writer, zip, true, layerNum, 0, ZoomMode.Normal);
     else
-    { if(objects.Count==0) return;
+    { int imgNum=0;
       writer.WriteLine("  (layer {0}", layerNum);
+      writer.WriteLine("    (tiles");
+      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Full);
+      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Normal);
+      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Tiny);
+      writer.WriteLine("    )");
     }
 
     if(objects.Count>0)
@@ -279,11 +231,18 @@ class Layer : IDisposable
     return cs;
   }
   
-  // insert a surface name into the full-sized array (used during level loading)
-  void InsertSurface(string name, Point pos)
-  { int x=pos.X/PartWidth, y=pos.Y/PartHeight;
-    full = ResizeTo(full, x+1, y+1);
-    full[y, x] = name;
+  // insert a surface name into an array (used during level loading)
+  void InsertSurface(string name, Point pos, ZoomMode zoom)
+  { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+    int x=pos.X/PartWidth, y=pos.Y/PartHeight;
+    string[,] narr = ResizeTo(surfaces, x+1, y+1);
+    if(narr!=surfaces)
+    { if(zoom==ZoomMode.Full) full=narr;
+      else if(zoom==ZoomMode.Normal) fourth=narr;
+      else sixteenth=narr;
+      surfaces=narr;
+    }
+    surfaces[y, x] = name;
     if(x+1>width)  width=x+1;
     if(y+1>height) height=y+1;
   }
@@ -358,7 +317,11 @@ class Layer : IDisposable
 
     List tiles = list["tiles"];
     if(tiles!=null)
-    { foreach(List image in tiles) InsertSurface(image.GetString(0), image["pos"].ToPoint());
+    { foreach(List image in tiles)
+      { ZoomMode zoom = ZoomMode.Full;
+        if(image["zoom"]!=null) zoom = (ZoomMode)image["zoom"].GetInt(0);
+        InsertSurface(image.GetString(0), image["pos"].ToPoint(), zoom);
+      }
       SyncScaledSizes();
     }
   }
@@ -397,10 +360,59 @@ class Layer : IDisposable
     { int nw=width>owidth ? Math.Max(width, owidth*2) : owidth;
       int nh=height>oheight ? Math.Max(height, oheight*2) : oheight;
       string[,] narr = new string[nh, nw];
-      for(int y=0; y<oheight; y++) Array.Copy(full, y*owidth, narr, y*nw, owidth);
+      for(int y=0; y<oheight; y++) Array.Copy(array, y*owidth, narr, y*nw, owidth);
       return narr;
     }
     return array;
+  }
+  
+  int Save(string path, TextWriter writer, ZipOutputStream zip, bool compile, int layerNum, int imgNum, ZoomMode zoom)
+  { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+    MemoryStream ms = new MemoryStream(4096);
+    for(int x=0; x<surfaces.GetLength(1); x++)
+      for(int y=0; y<surfaces.GetLength(0); y++)
+      { CachedSurface cs = GetSurface(surfaces, x, y);
+        if(cs==null && compile)
+        { ScaleDown(x, y, zoom);
+          cs = GetSurface(surfaces, x, y);
+        }
+        if(cs!=null)
+        { if(!IsEmpty(cs.Surface))
+          { string fn = string.Format("layer{0}_{1}.png", layerNum, imgNum++);
+            if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
+                                        fn, x*PartWidth, y*PartHeight, layerNum);
+            else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
+                                  fn, x*PartWidth, y*PartHeight, (int)zoom);
+            if(zip==null) cs.Surface.Save(path+fn, ImageType.PNG);
+            else
+            { ms.Position = 0;
+              ms.SetLength(0);
+              cs.Surface.Save(ms, ImageType.PNG);
+              zip.PutNextEntry(new ZipEntry(fn));
+              IOH.CopyStream(ms, zip, true);
+            }
+            
+            if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
+            // update the filename. note that this leaves the array in an invalid state, but we'll fix it below.
+            // we can't fix it now because the new name might conflict with another tile having that name
+            cs.Name=fn;
+          }
+          else RemoveSurface(surfaces, x, y);
+        }
+      }
+
+    // fix up the filenames
+    for(int x=0; x<surfaces.GetLength(1); x++)
+      for(int y=0; y<surfaces.GetLength(0); y++)
+      { CachedSurface cs = GetSurface(surfaces, x, y);
+        if(cs!=null && cs.Name!=surfaces[y,x])
+        { LinkedList.Node node = (LinkedList.Node)this.surfaces[surfaces[y,x]];
+          this.surfaces.Remove(surfaces[y,x]);
+          this.surfaces[surfaces[y,x]=cs.Name] = node;
+        }
+      }
+
+    return imgNum;
   }
   
   // take an image and return a copy in the same format, but scaled down to 1/16th the size (1/4th on each axis)

@@ -771,24 +771,24 @@ class WorldDisplay : Control
   { Point pt = WindowToWorld(e.Start);
     if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
-      { if(e.Pressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt)))
+      { if(e.OnlyPressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt)))
         { oldSubMode=subMode;
           subMode=SubMode.DragSelected;
           goto done;
         }
-        else if(subMode==SubMode.NewPoly)
+        else if(subMode==SubMode.NewPoly && !e.OnlyPressed(MouseButton.Right))
         { e.Cancel=true;
           goto done;
         }
       }
     }
-    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.Pressed(MouseButton.Left) && ClickObject(pt))
+    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt))
     { subMode=SubMode.DragSelected;
       goto done;
     }
 
-    if(e.Pressed(MouseButton.Left)) subMode = SubMode.DragRectangle;
-    else if(!e.Pressed(MouseButton.Right)) e.Cancel=true;
+    if(e.OnlyPressed(MouseButton.Left)) subMode = SubMode.DragRectangle;
+    else if(!e.OnlyPressed(MouseButton.Right)) e.Cancel=true;
 
     done:
     base.OnDragStart(e);
