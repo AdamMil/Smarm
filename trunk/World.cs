@@ -192,6 +192,16 @@ class World : IDisposable
     return new ExportedImage(rect, file);
   }
 
+  public void FillRect(Rectangle rect, Color color, int layer)
+  { if(rect.X<0 || rect.Y<0)
+    { int xo=-Math.Min(rect.X, 0), yo=-Math.Min(rect.Y, 0);
+      Shift(xo, yo);
+      rect.Offset(xo, yo);
+    }
+    layers[layer].FillRect(rect, color);
+    changed = true;
+  }
+
   public void ImportImage(ExportedImage exp)
   { PSDCodec codec=null;
     Surface  surface=null;

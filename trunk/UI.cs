@@ -76,6 +76,7 @@ class TopBar : ContainerControl
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
     menu.Add(new MenuItem("Edit in paint program", 'E', new KeyCombo(Key.F5))).Click += new EventHandler(editRect_OnClick);
+    menu.Add(new MenuItem("Fill rectangle", 'F', new KeyCombo(KeyMod.Ctrl, 'F'))).Click += new EventHandler(fillRect_Click);
     menu.Add(new MenuItem("Move rectangle", 'M', new KeyCombo(Key.F8))).Click += new EventHandler(moveRect_OnClick);
     menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L')).Click += new EventHandler(levelProps_OnClick);
@@ -211,6 +212,7 @@ class TopBar : ContainerControl
 
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
   void moveRect_OnClick(object sender, EventArgs e) { App.Desktop.World.MoveRect(); }
+  void fillRect_Click(object sender, EventArgs e)   { App.Desktop.World.FillRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
   void levelProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowLevelProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
@@ -465,6 +467,22 @@ class WorldDisplay : Control
     App.Desktop.StatusText = "Edit process aborted.";
   }
 
+  public void FillRect()
+  { if(layer==-1)
+    { MessageBox.Show(Desktop, "Error", "You need to select a layer first.", MessageBoxButtons.Ok);
+      return;
+    }
+    if(!SelectRectangle("fill")) goto abort;
+    if(!SelectColor()) goto abort;
+    world.FillRect(world.ExpandRect(WindowToWorld(selected.Rect)), selected.Color, layer);
+    Invalidate();
+    App.Desktop.StatusText = "Fill completed.";
+    return;
+
+    abort:
+    App.Desktop.StatusText = "Fill process aborted.";
+  }
+
   public void Load(string directory)
   { try
     { Clear();
@@ -623,6 +641,12 @@ class WorldDisplay : Control
       dragImage.Dispose();
       dragImage = null;
       e.Handled = true;
+    }
+    else if(selectMode==SelectMode.Color && e.CE.Button==MouseButton.Left)
+    { Point pt = DrawRect.Location;
+      pt.Offset(e.CE.X, e.CE.Y);
+      selected.Color = DrawSurface.GetPixel(pt);
+      selectMode=SelectMode.Done;
     }
     else if(subMode==SubMode.DragRectangle || selectMode!=SelectMode.None)
     { // do nothing (but prevent the other if blocks from executing)
@@ -850,7 +874,7 @@ class WorldDisplay : Control
   #endregion
 
   enum SubMode { None, NewPoly, DragSelected, DragRectangle };
-  enum SelectMode { None, Selecting, Done };
+  enum SelectMode { None, Selecting, Done, Color };
 
   class Selection
   { public void Clear()
@@ -887,6 +911,7 @@ class WorldDisplay : Control
 
     public Rectangle Rect;
     public ArrayList Objs = new ArrayList(), Polys = new ArrayList();
+    public Color Color;
   }
 
   #region Private methods
@@ -1032,6 +1057,23 @@ class WorldDisplay : Control
     world.ChangedSinceSave = true;
   }
   
+  bool SelectColor()
+  { bool dontQuit=true;
+    selectMode = SelectMode.Color;
+
+    try
+    { App.Desktop.StatusText = "Click on a color in the world to select it.";
+      while(selectMode==SelectMode.Color && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(selectMode==SelectMode.None || !dontQuit) goto abort;
+      return true;
+
+      abort:
+      App.Desktop.StatusText = "Selection cancelled.";
+      return false;
+    }
+    finally { selectMode=SelectMode.None; }
+  }
+
   void SelectObject(Object obj)
   { if(selected.Objs.Count==1 && selected.Obj!=obj || !selected.Objs.Contains(obj))
     { InvalidateObjs();
