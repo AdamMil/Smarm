@@ -52,13 +52,13 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
-    menu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
+    menu.Add(new MenuItem("Edit in paint program", 'E')).Click += new EventHandler(exportRect_OnClick);
+    menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(KeyMod.None, Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L'));
+    menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
-    menu.Popup += new EventHandler(viewMenu_Popup);
     menu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
-    menu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Add(new MenuItem("Dummy item"));
@@ -105,6 +105,17 @@ class TopBar : ContainerControl
     #endregion
   }
 
+  public bool AntialiasText
+  { get { return ((GameLib.Fonts.TrueTypeFont)Desktop.Font).RenderStyle == GameLib.Fonts.RenderStyle.Shaded; }
+    set
+    { if(value!=AntialiasText)
+      { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
+        font.RenderStyle = value ? GameLib.Fonts.RenderStyle.Shaded : GameLib.Fonts.RenderStyle.Solid;
+        Desktop.Invalidate();
+      }
+    }
+  }
+
   public string LayerText { set { lblLayer.Text=value; } }
   public string ModeText { set { lblMode.Text="Mode: "+value; } }
   public string MouseText { set { lblMouse.Text=value; } }
@@ -113,18 +124,11 @@ class TopBar : ContainerControl
   public MenuBar MenuBar { get { return menuBar; } }
   public MenuLabel TypeMenu { get { return lblType; } }
 
-  protected override void OnPaintBackground(PaintEventArgs e)
-  { base.OnPaintBackground(e);
-    Color color = Color.FromArgb(80, 80, 80);
-    Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Bottom-1, color);
-    Primitives.VLine(e.Surface, Width-lblWidth*2-lblPadding*3/2, 0, Height-1, color);
-    Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
-  }
+  public void New() { if(CanUnloadLevel()) App.Desktop.World.Clear(); }
 
-  void New() { if(CanUnloadLevel()) App.Desktop.World.Clear(); }
-
-  void Load()
-  { string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
+  public void Load()
+  { App.Desktop.StopKeyRepeat();
+    string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
     if(file!="")
     { try
       { App.Desktop.World.Load(file);
@@ -140,33 +144,43 @@ class TopBar : ContainerControl
     }
   }
 
-  bool Save()
+  public bool Save()
   { if(lastPath==null) return SaveAs();
+    App.Desktop.StopKeyRepeat();
     App.Desktop.World.Save(lastPath, false);
     App.Desktop.StatusText = lastPath+" saved.";
     return true;
   }
 
-  bool SaveAs()
+  public bool SaveAs()
   { string file = FileChooser.Save(Desktop, FileType.Directory, lastPath);
     if(file=="") return false;
     lastPath = file;
     return Save();
   }
 
-  void Compile()
-  { string file = FileChooser.Save(Desktop, FileType.Directory);
+  public void Compile()
+  { App.Desktop.StopKeyRepeat();
+    string file = FileChooser.Save(Desktop, FileType.Directory);
     if(file=="") MessageBox.Show(Desktop, "Aborted", "Compilation aborted.");
     else if(MessageBox.Show(Desktop, "Compile?", "Compile level into '"+file+"'?", MessageBoxButtons.YesNo)==0)
       App.Desktop.World.Save(file, true);
   }
 
-  void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
+  public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
 
-  void ExportRect()
+  public void ExportRect()
   {
   }
   
+  protected override void OnPaintBackground(PaintEventArgs e)
+  { base.OnPaintBackground(e);
+    Color color = Color.FromArgb(80, 80, 80);
+    Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Bottom-1, color);
+    Primitives.VLine(e.Surface, Width-lblWidth*2-lblPadding*3/2, 0, Height-1, color);
+    Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
+  }
+
   bool CanUnloadLevel()
   { if(App.Desktop.World.World.ChangedSinceSave)
     { int button = MessageBox.Show(Desktop, "Save changes?", "This level has been altered. Save changes?",
@@ -187,14 +201,17 @@ class TopBar : ContainerControl
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
   void exportRect_OnClick(object sender, EventArgs e) { ExportRect(); }
+  void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
+  void smarmProps_OnClick(object sender, EventArgs e)
+  { if(new ObjectProperties(App.SetupObject).Show(Desktop))
+    { object value = App.SetupObject["antialias"];
+      AntialiasText = value!=null && (bool)value ? true : false;
+    }
+  }
 
   void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
 
-  void toggleAntialias_OnClick(object sender, EventArgs e)
-  { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
-    font.RenderStyle = font.RenderStyle==GameLib.Fonts.RenderStyle.Shaded ? GameLib.Fonts.RenderStyle.Solid : GameLib.Fonts.RenderStyle.Shaded;
-    Desktop.Invalidate();
-  }
+  void toggleAntialias_OnClick(object sender, EventArgs e) { AntialiasText = !AntialiasText; }
 
   void layerMenu_Popup(object sender, EventArgs e)
   { Menu menu = (Menu)sender;
@@ -215,12 +232,6 @@ class TopBar : ContainerControl
     }
   }
 
-  void viewMenu_Popup(object sender, EventArgs e)
-  { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
-    Menu menu = (Menu)sender;
-    menu.Controls[1].Text = "Toggle Antialiasing ("+(font.RenderStyle==GameLib.Fonts.RenderStyle.Shaded ? "on" : "off")+')';
-  }
-  
   void mode_OnClick(object sender, EventArgs e)
   { MenuItemBase item = (MenuItemBase)sender;
     switch(item.HotKey)
@@ -391,6 +402,13 @@ class WorldDisplay : Control
   }
 
   public void Save(string directory, bool compile) { world.Save(directory, compile); }
+  
+  public void ShowObjectProperties()
+  { if(selectedObject!=null && selectedObject.Type.Properties.Length>0)
+    { ObjectProperties props = new ObjectProperties(selectedObject);
+      if(props.Show(Desktop)) Invalidate(selectedObject);
+    }
+  }
   #endregion
 
   #region Painting
@@ -523,10 +541,6 @@ class WorldDisplay : Control
       else if((e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) && selectedObject!=null)
       { Invalidate(selectedObject);
         selectedObject = null;
-      }
-      else if(e.KE.Key==Key.F4 && selectedObject!=null && selectedObject.Type.Properties.Length>0)
-      { ObjectProperties props = new ObjectProperties(selectedObject);
-        if(props.Show(Desktop)) Invalidate(selectedObject);
       }
       else e.Handled=false;
     }
@@ -906,15 +920,16 @@ class SmarmDesktop : DesktopControl
   public string StatusText { get { return bottomBar.StatusText; } set { bottomBar.StatusText=value; } }
   public WorldDisplay World { get { return world; } }
 
-  protected override void OnKeyPress(KeyEventArgs e)
+  protected override void OnKeyDown(KeyEventArgs e)
   { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt|KeyMod.Ctrl))
-    { e.Handled = true;
-      if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+    { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
       { StopKeyRepeat();
         App.Fullscreen = !App.Fullscreen;
+        e.Handled = true;
       }
-      else if(ModalWindow!=null || !topBar.MenuBar.HandleKey(e.KE)) e.Handled = false;
     }
+    if(!e.Handled && ModalWindow==null && topBar.MenuBar.HandleKey(e.KE)) e.Handled = true;
+    base.OnKeyDown(e);
   }
 
   protected override void OnResize(EventArgs e)
@@ -960,7 +975,7 @@ class ObjectProperties : Form
           if(obj[prop.Name]!=null) tb.Text = obj[prop.Name].ToString();
           ctl = tb;
         }
-        ctl.Bounds = new Rectangle(label.Right+xpad, height, 100, yinc);
+        ctl.Bounds = new Rectangle(label.Right+xpad, height, 200, yinc);
         ctl.Name = prop.Name;
         ctl.TabIndex = tab++;
         Controls.AddRange(label, ctl);
@@ -969,7 +984,7 @@ class ObjectProperties : Form
         height += yinc;
       }
 
-      width += xpad*3 + 100;
+      width += xpad*3 + 200;
       height += ypad;
 
       { int btnHeight = font.LineSkip*3/2;
