@@ -58,7 +58,8 @@ class MenuLabel : Label
 #region TopBar
 class TopBar : ContainerControl
 { public TopBar()
-  { BackColor = Color.FromArgb(48, 48, 48);
+  { BackColor = SystemColors.Control;
+    ForeColor = SystemColors.ControlText;
 
     #region Add controls
     menuBar.Bounds = new Rectangle(0, 1, 140, 30);
@@ -104,17 +105,6 @@ class TopBar : ContainerControl
     }
     
     lblType.Menu = new Menu();
-
-    foreach(Menu m in menuBar.Menus)
-    { m.BackColor = BackColor;
-      m.SelectedBackColor = Color.FromArgb(80, 80, 80);
-      m.SelectedForeColor = Color.White;
-    }
-    foreach(Menu m in new MenuBase[] { lblLayer.Menu, lblZoom.Menu, lblMode.Menu, lblType.Menu })
-    { m.BackColor = BackColor;
-      m.SelectedBackColor = Color.FromArgb(80, 80, 80);
-      m.SelectedForeColor = Color.White;
-    }
 
     lblLayer.Bounds = new Rectangle(Width-lblWidth, 0, lblWidth, lblHeight);
     lblMouse.Bounds = new Rectangle(Width-lblWidth, lblHeight, lblWidth, lblHeight);
@@ -189,7 +179,7 @@ class TopBar : ContainerControl
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
-    Color color = Color.FromArgb(80, 80, 80);
+    Color color = SystemColors.ControlDark;
     Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Bottom-1, color);
     Primitives.VLine(e.Surface, Width-lblWidth*2-lblPadding*3/2, 0, Height-1, color);
     Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
@@ -289,7 +279,8 @@ class TopBar : ContainerControl
 #region BottomBar
 class BottomBar : ContainerControl
 { public BottomBar()
-  { BackColor=Color.FromArgb(32, 32, 32);
+  { BackColor = SystemColors.Control;
+    ForeColor = SystemColors.ControlText;
     Controls.Add(lblStatus);
   }
 
@@ -297,7 +288,8 @@ class BottomBar : ContainerControl
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
-    Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top, Color.FromArgb(64, 64, 64));
+    Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top, SystemColors.ControlDarkDark);
+    Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top+1, SystemColors.ControlDark);
   }
 
   protected override void OnResize(EventArgs e)
@@ -1314,8 +1306,6 @@ class SmarmDesktop : DesktopControl
   { AutoFocusing = AutoFocus.None;
     KeyPreview   = true;
     KeyRepeatDelay = 350;
-    ForeColor    = Color.White;
-    BackColor    = Color.Black;
     Controls.AddRange(topBar, bottomBar, world);
     world.Focus();
   }
