@@ -316,7 +316,7 @@ class WorldDisplay : Control
 { public WorldDisplay()
   { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus|ControlStyle.BackingSurface;
     BackColor = Color.Black;
-    dragThreshold = 4;
+    DragThreshold = 4;
   }
 
   #region Properties
