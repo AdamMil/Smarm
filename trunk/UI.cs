@@ -555,7 +555,7 @@ class WorldDisplay : Control
   public void ShowObjectProperties()
   { int num = selected.Objs.Count;
     if(num==0) App.Desktop.StatusText = "No object selected.";
-    if(num>1) App.Desktop.StatusText = "Too many objects selected.";
+    else if(num>1) App.Desktop.StatusText = "Too many objects selected.";
     else
     { if(selected.Obj.Type.Properties.Length>0)
       { ObjectProperties props = new ObjectProperties(selected.Obj);
