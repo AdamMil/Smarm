@@ -392,6 +392,7 @@ class WorldDisplay : Control
     set
     { if(value!=zoom)
       { Point cp = new Point(Width/2, Height/2), c1 = WindowToWorld(cp), c2;
+        lastZoom = zoom;
         switch(zoom=value)
         { case ZoomMode.Full: App.Desktop.TopBar.ZoomText = "4x"; break;
           case ZoomMode.Normal: App.Desktop.TopBar.ZoomText = "1x"; break;
@@ -422,6 +423,7 @@ class WorldDisplay : Control
     EditMode = EditMode.ViewOnly;
     SelectedLayer = -1;
     ZoomMode = ZoomMode.Full;
+    lastZoom = ZoomMode.Normal;
     BackColor = world.BackColor;
     Invalidate();
   }
@@ -616,18 +618,22 @@ class WorldDisplay : Control
       e.Handled=true;
     }
     else if(e.KE.KeyMods==KeyMod.None)
-    { if(e.KE.Key==Key.Home)
-      { x = y = 0;
-        Invalidate();
-        e.Handled = true;
-      }
+    { e.Handled = true;
+      if(e.KE.Key==Key.Left)       { x -= Width*9/10*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.Right) { x += Width*9/10*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.Up)    { y -= Height*9/10*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.Down)  { y += Height*9/10*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.Home)     { x -= Width*4*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.End)      { x += Width*4*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.PageUp)   { y -= Height*4*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.PageDown) { y += Height*4*(int)zoom; Invalidate(); }
+      else if(e.KE.Key==Key.Space) ZoomMode = lastZoom;
       else if(e.KE.Char=='[')
       { switch(zoom)
         { case ZoomMode.Full:   ZoomMode=ZoomMode.Normal; break;
           case ZoomMode.Normal: ZoomMode=ZoomMode.Tiny; break;
           case ZoomMode.Tiny:   ZoomMode=ZoomMode.Full; break;
         }
-        e.Handled = true;
       }
       else if(e.KE.Char==']')
       { switch(zoom)
@@ -635,25 +641,15 @@ class WorldDisplay : Control
           case ZoomMode.Normal: ZoomMode=ZoomMode.Full; break;
           case ZoomMode.Tiny:   ZoomMode=ZoomMode.Normal; break;
         }
-        e.Handled = true;
       }
-      else if(e.KE.Char=='p')
-      { EditMode = EditMode.Polygons;
-        e.Handled = true;
-      }
-      else if(e.KE.Char=='o')
-      { EditMode = EditMode.Objects;
-        e.Handled = true;
-      }
-      else if(e.KE.Key==Key.Backquote)
-      { SelectedLayer = 0;
-        e.Handled = true;
-      }
+      else if(e.KE.Char=='p') EditMode = EditMode.Polygons;
+      else if(e.KE.Char=='o') EditMode = EditMode.Objects;
+      else if(e.KE.Key==Key.Backquote) SelectedLayer = 0;
       else if(e.KE.Char>='0' && e.KE.Char<='9')
       { int layer = e.KE.Char-'0';
         if(layer<world.Layers.Length) SelectedLayer = layer;
-        e.Handled = true;
       }
+      else e.Handled = false;
     }
     else if(editMode==EditMode.Polygons)
     { e.Handled=true;
@@ -904,7 +900,7 @@ class WorldDisplay : Control
   int x, y, layer, selectedPoint;
   EditMode editMode;
   SubMode  subMode, oldSubMode;
-  ZoomMode zoom;
+  ZoomMode zoom, lastZoom;
   SelectMode selectMode;
   bool     showAll, showObjs, showPolys;
 }

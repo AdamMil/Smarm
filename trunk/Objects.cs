@@ -356,6 +356,56 @@ class Polygon
     writer.WriteLine("))");
   }
 
+  /*
+  void Split()
+  { if(this.Points.Length<3) return null;
+    Polygon[] test, done;
+    test.Add(this);
+    while(test.Count)
+    { restart:
+      foreach(Polygon p in test)
+      { foreach(Corner c in p)
+        { if(c makes concave) // c.DotSign != lastC.dotSign
+          { (ie,pt,dist) = NearestIntersecting(p, c.Edges[0]);
+            if(ie==null)
+            { (ie, pt, ep, dist) = NearestIntersecting(p, c.Edges[1]);
+              if(ie==null) give up, throw exception;
+            }
+            if(ie!=null)
+            { np = Add point between ie.Points[0] and ie.Points[1];
+              reverse directions starting from from 'ep' and add all points up to and including 'np'
+                into a new polygon, and removing those points from 'p' (except 'np', which is not removed);
+              add that polygon to 'test';
+              goto restart;
+            }
+          }
+        }
+        done.Add(p); // convex, so we're done with it
+      }
+    }
+  }
+  
+  Edge,Point,Point,int NearestIntersecting(Polygon p, Edge e)
+  { Edge ie=null; // intersecting edge
+    Point ip, ep;
+    int dist=int.Max;
+    foreach(Edge oe in p)
+      if(!oe.Adjacent(e)) // adjacent edge shares a vertex
+      { Point pt = e.Intersection(oe); // line intersection
+        if(Min(pt.DistanceTo(e.Points[0]), pt.DistanceTo(e.Points[1])) < dist)
+        { dist = the distance;
+          ep = the edge that was extended (the one that had the smaller distance)
+          ip = pt;
+          ie = oe;
+        }
+      }
+    return ie, pt, ep, dist;
+  }
+  */
+  public Polygon[] Split()
+  { if(points.Length<3) return null;
+  }
+
   void Load(List list)
   { Type = list["type"].GetString(0);
 
