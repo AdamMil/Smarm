@@ -68,6 +68,20 @@ class Layer : IDisposable
 
   public void ClearZoomTiles() { Clear(fourth); Clear(sixteenth); }
 
+  public void FillPoint(Point pt, Color color)
+  { int x=pt.X*4/PartWidth, y=pt.Y*4/PartHeight;
+    full   = ResizeTo(full, x+1, y+1);
+    width  = Math.Max(width, x+1);
+    height = Math.Max(height, y+1);
+    Tile tile = full[y, x];
+    if(tile.Color!=color)
+    { SetMakeColor(full, x, y, color);
+      ClearZC(fourth, pt.X, pt.Y, 1, 1);
+      ClearZC(sixteenth, pt.X/4, pt.Y/4, 1, 1);
+    }
+    SyncScaledSizes();
+  }
+
   public void FillRect(Rectangle wrect, Color color)
   { int nw=wrect.Right*4/PartWidth, nh=wrect.Bottom*4/PartHeight;
     full   = ResizeTo(full, nw, nh);
@@ -239,7 +253,7 @@ class Layer : IDisposable
   // remove a rectangle of tiles in an array, given zoom coordinates
   void ClearZC(Tile[,] array, int zx, int zy, int zw, int zh)
   { int x=zx/PartWidth, y=zy/PartHeight; 
-    Clear(array, x, y, (zx+zw+PartWidth-1)/PartWidth-x, (zh+PartHeight-1)/PartHeight-y);
+    Clear(array, x, y, (zx+zw+PartWidth-1)/PartWidth-x, (zy+zh+PartHeight-1)/PartHeight-y);
   }
 
   // fill a rectangle of tiles in an array, given zoom coordinates
@@ -248,8 +262,7 @@ class Layer : IDisposable
     bw = Math.Min(bw+bx, array.GetLength(1))-bx; bh = Math.Min(bh+by, array.GetLength(0))-by;
     for(int yi=0; yi<bh; yi++)
       for(int xi=0; xi<bw; xi++)
-        if(array[by+yi, bx+xi].Name==null) MakeTile(array, bx+xi, by+yi, color);
-        else SetTileColor(array, bx+xi, by+yi, color);
+        SetMakeColor(array, bx+xi, by+yi, color);
   }
 
   // return a CachedSurface for the given array element, loading it first if necessary
@@ -624,6 +637,11 @@ class Layer : IDisposable
         }
   }
     
+  void SetMakeColor(Tile[,] array, int x, int y, Color c)
+  { if(array[y, x].Name==null) MakeTile(array, x, y, c);
+    else SetTileColor(array, x, y, c);
+  }
+
   void SetTileColor(Tile[,] array, int x, int y, Color c)
   { CachedSurface cs = GetSurface(array, x, y);
     if(cs.Color.A==0)
