@@ -828,8 +828,6 @@ class WorldDisplay : Control
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(!ClickObject(e.CE.Point))
         { Object obj = new Object(SelectedType);
-          e.CE.X -= obj.Width/2;
-          e.CE.Y -= obj.Height/2;
           obj.Location = Keyboard.HasOnlyKeys(KeyMod.Shift) ? AlignPoints(e.CE.Point, lastPoint) : e.CE.Point;
           lastPoint = obj.Location;
           world.Layers[layer].Objects.Add(obj);
@@ -1240,9 +1238,7 @@ class WorldDisplay : Control
 
   void SelectObjects(Rectangle rect)
   { foreach(Object obj in world.Layers[layer].Objects)
-    { Point pt = obj.Location;
-      pt.Offset(obj.Width/2, obj.Height/2);
-      if(rect.Contains(pt) && !selected.Objs.Contains(obj)) selected.Objs.Add(obj);
+    { if(rect.Contains(obj.Location) && !selected.Objs.Contains(obj)) selected.Objs.Add(obj);
     }
     UpdateObjectText();
   }
