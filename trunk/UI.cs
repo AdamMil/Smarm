@@ -821,7 +821,7 @@ class WorldDisplay : Control
         subMode = SubMode.None;
         if(selectMode==SelectMode.None)
         { selected.Rect = WindowToWorld(selected.Rect);
-          if(editMode==EditMode.Objects) SelectObjects(selected.Rect, layer);
+          if(editMode==EditMode.Objects) SelectObjects(selected.Rect);
           else if(editMode==EditMode.Polygons) SelectPolygons(selected.Rect);
         }
         else selectMode = SelectMode.Done;
