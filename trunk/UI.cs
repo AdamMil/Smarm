@@ -111,7 +111,12 @@ class TopBar : ContainerControl
     Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
   }
 
-  void OpenMenu(Menu menu, Button button) { if(menu.Parent==null) menu.Show(button, new Point(0, button.Height)); }
+  void OpenMenu(Menu menu, Button button)
+  { if(menu.Parent==null)
+    { menu.Show(button, new Point(0, button.Height));
+      button.Pressed = false;
+    }
+  }
 
   void Load()
   { 
@@ -132,8 +137,8 @@ class TopBar : ContainerControl
   }
   
   bool CanUnloadLevel()
-  { if(App.Desktop.World.ChangedSinceSave)
-    { int button = MessageBox.Show(this, "Save changes?", "This level has been altered. Save changes?",
+  { /*if(App.Desktop.World.ChangedSinceSave)*/
+    { int button = MessageBox.Show(Desktop, "Save changes?", "This level has been altered. Save changes?",
                                    MessageBoxButtons.YesNoCancel);
       if(button==0) return Save();
       else if(button==1) return true;
@@ -205,6 +210,9 @@ class WorldDisplay : Control
 
   protected override void OnPaint(PaintEventArgs e)
   { base.OnPaint(e);
+    GameLib.Fonts.Font font = Font;
+    font.Color = ForeColor;
+    font.BackColor = BackColor;
     Font.Render(e.Surface, "World goes here", DisplayRect, ContentAlignment.MiddleCenter);
   }
 
@@ -214,6 +222,9 @@ class WorldDisplay : Control
   
   World world = new World();
 }
+#endregion
+
+#region FileChooser
 #endregion
 
 #region SmarmDesktop
