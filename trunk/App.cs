@@ -86,25 +86,14 @@ class App
       else if(e is QuitEvent) return false;
     }
     else if(desktop.Updated)
-    { //Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
-      //desktop.Updated=false;
-      Video.DisplaySurface.Fill(System.Drawing.Color.White);
-      //image.Layers[0].Surface.Blit(Video.DisplaySurface, 0, 0);
-      //image.Layers[1].Surface.Blit(Video.DisplaySurface, 0, 64);
-      image.Flattened.Blit(Video.DisplaySurface, 0, 128);
-      Video.DisplaySurface.Flip();
+    { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
+      desktop.Updated=false;
     }
     return true;
   }
 
-  static PSDImage image;
   static void Main()
-  { PSDCodec codec = new PSDCodec();
-    image = codec.Read("c:/wutemp/test.psd");
-    codec.Write(image, "c:/wutemp/out.psd");
-    //image = codec.Read("c:/wutemp/out.psd");
-    
-    WM.WindowTitle = "Smarm "+Version;
+  { WM.WindowTitle = "Smarm "+Version;
     desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
     desktop.World.Clear(); // start a new level
     PropertiesUpdated();
