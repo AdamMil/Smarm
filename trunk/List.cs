@@ -8,6 +8,7 @@ namespace Smarm
 class List : IEnumerable
 { public List() { name=string.Empty; }
   public List(string name) { this.name=name; }
+  public List(string name, params object[] items) { this.name=name; foreach(object o in items) Add(o); }
   public List(Stream stream) { name=string.Empty; Read(new StreamReader(stream)); }
 
   public object this[int index] { get { return items[index]; } set { items[index]=value; } }
@@ -19,6 +20,10 @@ class List : IEnumerable
     }
   }
 
+  public bool Contains(string name)
+  { foreach(object o in items) if(o is List) { List list=(List)o; if(list.Name==name) return true; }
+    return false;
+  }
   public int Length { get { return items.Count; } }
 
   public string Name
@@ -46,6 +51,9 @@ class List : IEnumerable
     sw.Flush();
   }
   
+  public System.Drawing.Color ToColor() { return System.Drawing.Color.FromArgb(GetInt(0), GetInt(1), GetInt(2)); }
+  public System.Drawing.Point ToPoint() { return new System.Drawing.Point(GetInt(0), GetInt(1)); }
+
   public override string ToString()
   { StringWriter s = new StringWriter();
     Write(s, 0);

@@ -10,20 +10,16 @@ namespace Smarm
 
 #region MenuLabel
 class MenuLabel : Label
-{ public MenuLabel() { Style |= ControlStyle.Clickable; }
+{ public MenuLabel() { Style |= ControlStyle.Clickable; TextPadding=1; }
   
   public MenuBase Menu { get { return menu; } set { menu=value; } }
 
   protected override void OnMouseEnter(EventArgs e) { over=true;  Invalidate(); }
   protected override void OnMouseLeave(EventArgs e) { over=false; Invalidate(); }
   protected override void OnPaintBackground(PaintEventArgs e)
-  { if(over && menu!=null && menu.Controls.Count>0)
-    { Color old = RawBackColor, back = BackColor;
-      BackColor = Color.FromArgb(back.R+(255-back.R)/8, back.G+(255-back.G)/8, back.B+(255-back.B)/8);
-      base.OnPaintBackground(e);
-      BackColor = old;
-    }
-    else base.OnPaintBackground(e);
+  { base.OnPaintBackground(e);
+    if(over && menu!=null && menu.Controls.Count>0)
+      Helpers.DrawBorder(e.Surface, DisplayRect, BorderStyle.Fixed3D, BackColor, false);
   }
   protected override void OnMouseDown(ClickEventArgs e)
   { if(!e.Handled && e.CE.Button==0 && menu!=null && menu.Controls.Count>0)
@@ -45,16 +41,19 @@ class TopBar : ContainerControl
 
     #region Add controls
     menuBar.Bounds = new Rectangle(0, 1, 140, 30);
+    menuBar.VerticalPadding=4;
 
     MenuBase menu = menuBar.Add(new Menu("File", new KeyCombo(KeyMod.Alt, 'F')));
     menu.Add(new MenuItem("New", 'N', new KeyCombo(KeyMod.Ctrl, 'N'))).Click += new EventHandler(new_OnClick);
     menu.Add(new MenuItem("Load", 'L', new KeyCombo(KeyMod.Ctrl, 'L'))).Click += new EventHandler(load_OnClick);
     menu.Add(new MenuItem("Save", 'S', new KeyCombo(KeyMod.Ctrl, 'S'))).Click += new EventHandler(save_OnClick);
-    menu.Add(new MenuItem("Save As", 'A')).Click += new EventHandler(saveAs_OnClick);
+    menu.Add(new MenuItem("Save As...", 'A')).Click += new EventHandler(saveAs_OnClick);
+    menu.Add(new MenuItem("Compile...", 'C')).Click += new EventHandler(compile_OnClick);
     menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
     menu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
+    menu.Add(new MenuItem("Level properties...", 'L'));
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
     menu.Popup += new EventHandler(viewMenu_Popup);
@@ -62,12 +61,15 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
 
     lblLayer.Menu = new Menu();
+    lblLayer.Menu.Add(new MenuItem("Dummy item"));
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
 
-    lblZoom.Menu = new Menu();
-    lblZoom.Menu.Add(new MenuItem("Size to window", 'S'));
-    lblZoom.Menu.Add(new MenuItem("Render size (0.5x)", 'R'));
-    lblZoom.Menu.Add(new MenuItem("Full size (1x)", 'F'));
+    { EventHandler click = new EventHandler(zoom_OnClick);
+      lblZoom.Menu = new Menu();
+      lblZoom.Menu.Add(new MenuItem("Size to window", 'S')).Click += click;
+      lblZoom.Menu.Add(new MenuItem("Render size (0.5x)", 'R')).Click += click;
+      lblZoom.Menu.Add(new MenuItem("Full size (1x)", 'F')).Click += click;
+    }
     
     { EventHandler click = new EventHandler(mode_OnClick);
       lblMode.Menu = new Menu();
@@ -97,16 +99,18 @@ class TopBar : ContainerControl
     lblType.TextAlign = ContentAlignment.TopRight;
     lblLayer.Anchor = lblMouse.Anchor = lblMode.Anchor = lblZoom.Anchor = lblType.Anchor = AnchorStyle.TopRight;
 
-    lblLayer.Text = "Layer 0";
-    lblMouse.Text = "0x0";
-    lblMode.Text  = "Mode: View";
-    lblZoom.Text  = "Zoom: Full";
+    MouseText = "0x0";
+    ZoomText = "Full";
     Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, lblType, menuBar);
     #endregion
   }
 
-  public MenuBar MenuBar { get { return menuBar; } }
+  public string LayerText { set { lblLayer.Text=value; } }
+  public string ModeText { set { lblMode.Text="Mode: "+value; } }
   public string MouseText { set { lblMouse.Text=value; } }
+  public string ZoomText { set { lblZoom.Text="Zoom: "+value; } }
+
+  public MenuBar MenuBar { get { return menuBar; } }
   public MenuLabel TypeMenu { get { return lblType; } }
 
   protected override void OnPaintBackground(PaintEventArgs e)
@@ -117,9 +121,7 @@ class TopBar : ContainerControl
     Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
   }
 
-  void New()
-  { if(CanUnloadLevel()) App.Desktop.World.Clear();
-  }
+  void New() { if(CanUnloadLevel()) App.Desktop.World.Clear(); }
 
   void Load()
   { string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
@@ -139,16 +141,23 @@ class TopBar : ContainerControl
   }
 
   bool Save()
-  { if(lastPath==null) SaveAs();
+  { if(lastPath==null) return SaveAs();
+    App.Desktop.World.Save(lastPath, false);
     App.Desktop.StatusText = lastPath+" saved.";
-    return false;
+    return true;
   }
 
   bool SaveAs()
-  { string file = FileChooser.Save(Desktop, FileType.Directory);
+  { string file = FileChooser.Save(Desktop, FileType.Directory, lastPath);
     if(file=="") return false;
     lastPath = file;
     return Save();
+  }
+
+  void Compile()
+  { string file = FileChooser.Save(Desktop, FileType.Directory);
+    if(file=="") MessageBox.Show(Desktop, "Aborted", "Compilation aborted.");
+    else App.Desktop.World.Save(file, true);
   }
 
   void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
@@ -173,6 +182,7 @@ class TopBar : ContainerControl
   void load_OnClick(object sender, EventArgs e)   { Load(); }
   void save_OnClick(object sender, EventArgs e)   { Save(); }
   void saveAs_OnClick(object sender, EventArgs e) { SaveAs(); }
+  void compile_OnClick(object sender, EventArgs e) { Compile(); }
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
   void exportRect_OnClick(object sender, EventArgs e) { ExportRect(); }
@@ -187,16 +197,23 @@ class TopBar : ContainerControl
 
   void layerMenu_Popup(object sender, EventArgs e)
   { Menu menu = (Menu)sender;
-    menu.Clear();
-    // TODO: populate from world
-    menu.Add(new MenuItem("Layer 0", '0'));
-    menu.Add(new MenuItem("Layer 1", '1'));
-    menu.Add(new MenuItem("Layer 2", '2'));
-    menu.Add(new MenuItem("Layer 3", '3'));
-    menu.Add(new MenuItem("Layer 4", '4'));
-    menu.Add(new MenuItem("New Layer", 'N'));
+    Layer[] layers = App.Desktop.World.World.Layers;
+    if(menu.Controls.Count != layers.Length+2)
+    { EventHandler click = new EventHandler(layer_OnClick);
+      MenuItemBase item;
+      menu.Clear();
+      for(int i=0; i<layers.Length; i++)
+      { item = menu.Add(new MenuItem("Layer "+i));
+        item.Click += click;
+        item.Tag    = i;
+      }
+      menu.Add(new MenuItem("New Layer")).Click += click;
+      item = menu.Add(new MenuItem("All Layers"));
+      item.Click += click;
+      item.Tag = -1;
+    }
   }
-  
+
   void viewMenu_Popup(object sender, EventArgs e)
   { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
     Menu menu = (Menu)sender;
@@ -206,14 +223,29 @@ class TopBar : ContainerControl
   void mode_OnClick(object sender, EventArgs e)
   { MenuItemBase item = (MenuItemBase)sender;
     switch(item.HotKey)
-    { case 'O': App.Desktop.World.EditMode = EditMode.Objects;  lblMode.Text = "Mode: Obj";  break;
-      case 'P': App.Desktop.World.EditMode = EditMode.Polygons; lblMode.Text = "Mode: Poly"; break;
-      case 'V': App.Desktop.World.EditMode = EditMode.ViewOnly; lblMode.Text = "Mode: View"; break;
+    { case 'O': App.Desktop.World.EditMode = EditMode.Objects;  break;
+      case 'P': App.Desktop.World.EditMode = EditMode.Polygons; break;
+      case 'V': App.Desktop.World.EditMode = EditMode.ViewOnly; break;
+    }
+  }
+  
+  void layer_OnClick(object sender, EventArgs e)
+  { MenuItemBase item = (MenuItemBase)sender;
+    if(item.Tag==null) App.Desktop.World.AddLayer();
+    else App.Desktop.World.SelectedLayer = (int)item.Tag;
+  }
+
+  void zoom_OnClick(object sender, EventArgs e)
+  { MenuItemBase item = (MenuItemBase)sender;
+    switch(item.HotKey)
+    { case 'S': App.Desktop.World.ZoomMode = ZoomMode.Fit;  break;
+      case 'R': App.Desktop.World.ZoomMode = ZoomMode.Quarter; break;
+      case 'F': App.Desktop.World.ZoomMode = ZoomMode.Full; break;
     }
   }
   #endregion
 
-  const int lblWidth=64, lblHeight=16, lblPadding=6;
+  const int lblWidth=66, lblHeight=16, lblPadding=6;
   MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel(), lblType=new MenuLabel();
   Label  lblMouse=new Label();
   MenuBar menuBar=new MenuBar();
@@ -247,12 +279,15 @@ class BottomBar : ContainerControl
 
 #region WorldDisplay
 enum EditMode { Objects, Polygons, ViewOnly };
+enum ZoomMode { Full, Quarter, Fit };
 class WorldDisplay : Control
 { public WorldDisplay()
   { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus|ControlStyle.BackingSurface;
-    BackColor=Color.Black;
+    BackColor = Color.Black;
+    dragThreshold = 4;
   }
 
+  #region Properties
   public EditMode EditMode
   { get { return editMode; }
     set
@@ -272,7 +307,7 @@ class WorldDisplay : Control
             item.Tag = obj;
             lbl.Menu.Add(item);
           }
-          lbl.Text = "Select object type";
+          App.Desktop.TopBar.ModeText = "Obj";
         }
         else if(editMode==EditMode.Polygons)
         { foreach(PolygonType type in PolygonType.Types)
@@ -282,9 +317,25 @@ class WorldDisplay : Control
             item.Tag = type;
             lbl.Menu.Add(item);
           }
-          SelectedType = lbl.Menu.Controls.Count>0 ? lbl.Menu.Controls[0].Text : "";
+          App.Desktop.TopBar.ModeText = "Poly";
         }
-        else SelectedType = "";
+        else App.Desktop.TopBar.ModeText = "View";
+        SelectedType = lbl.Menu.Controls.Count>0 ? lbl.Menu.Controls[0].Text : "";
+        selectedPoly = null;
+        selectedObject = null;
+        if(layer==-1 && editMode!=EditMode.ViewOnly) SelectedLayer = 0;
+        Invalidate();
+      }
+    }
+  }
+
+  public int SelectedLayer
+  { get { return layer; }
+    set
+    { if(value!=layer)
+      { if(value==-1) EditMode = EditMode.ViewOnly;
+        layer = value;
+        App.Desktop.TopBar.LayerText = layer==-1 ? "All Layers" : "Layer "+layer;
         Invalidate();
       }
     }
@@ -294,60 +345,129 @@ class WorldDisplay : Control
   { get { return App.Desktop.TopBar.TypeMenu.Text; }
     set { App.Desktop.TopBar.TypeMenu.Text=value; }
   }
+
   public World World { get { return world; } }
-
-  public void Clear() { world.Clear(); x=y=0; Invalidate(); }
-  public void Load(string directory) { world.Load(directory); x=y=0; Invalidate(); }
-
-  protected override void OnPaint(PaintEventArgs e)
-  { base.OnPaint(e);
-    world.Render(e.Surface, x+e.DisplayRect.X, y+e.DisplayRect.Y, e.DisplayRect);
-    if(editMode==EditMode.Polygons)
-    { foreach(Polygon poly in world.Polygons)
-      { Color c = poly.Points.Length<3 ? poly==selectedPoly ? Color.FromArgb(255, 0, 0) : Color.FromArgb(192, 0, 0)
-                                       : poly==selectedPoly ? Color.FromArgb(0, 255, 0) : Color.FromArgb(0, 192, 0);
-        if(poly.Points.Length<3)
-        { if(poly.Points.Length>1)
-            Primitives.Line(e.Surface, poly.Points[0].X-x, poly.Points[0].Y-y,
-                            poly.Points[1].X-x, poly.Points[1].Y-y, c);
+  
+  public ZoomMode ZoomMode
+  { get { return zoom; }
+    set
+    { if(value!=zoom)
+      { switch(zoom=value)
+        { case ZoomMode.Full: App.Desktop.TopBar.ZoomText = "1x"; break;
+          case ZoomMode.Quarter: App.Desktop.TopBar.ZoomText = ".5x"; break;
+          case ZoomMode.Fit: App.Desktop.TopBar.ZoomText = "Fit"; break;
         }
-        else
-        { Point[] points = (Point[])poly.Points.Clone();
-          for(int i=0; i<points.Length; i++) points[i].Offset(-x, -y);
-          Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
-        }
-        for(int i=0; i<poly.Points.Length; i++)
-        { Point p = new Point(poly.Points[i].X-x, poly.Points[i].Y-y);
-          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
-        }
+        Invalidate();
       }
     }
   }
+  #endregion
 
+  #region Public methods
+  public void AddLayer()
+  { world.AddLayer();
+    SelectedLayer = world.Layers.Length-1;
+  }
+
+  public void Clear()
+  { world.Clear();
+    x = y = 0;
+    EditMode = EditMode.ViewOnly;
+    SelectedLayer = -1;
+    ZoomMode = ZoomMode.Full;
+    BackColor = world.BackColor;
+    Invalidate();
+  }
+
+  public void Load(string directory)
+  { Clear();
+    world.Load(directory);
+    BackColor = world.BackColor;
+    Invalidate();
+  }
+
+  public void Save(string directory, bool compile) { world.Save(directory, compile); }
+  #endregion
+
+  #region Painting
+  protected override void OnPaint(PaintEventArgs e)
+  { base.OnPaint(e);
+    
+    Point offset = WindowToWorld(e.DisplayRect.Location);
+    if(!drawAll && editMode==EditMode.Polygons) world.Render(e.Surface, x+offset.X, y+offset.Y, e.DisplayRect, zoom);
+    else world.Render(e.Surface, x+offset.X, y+offset.Y, e.DisplayRect, zoom, drawAll ? -1 : layer, selectedObject);
+
+    foreach(Polygon poly in world.Polygons)
+    { Rectangle rect = WorldToWindow(poly.Bounds);
+      rect.Inflate(1, 1);
+      if(!rect.IntersectsWith(e.WindowRect)) continue;
+
+      Color c;
+      if(poly.Points.Length<3) c = (poly==selectedPoly ? Color.FromArgb(255, 0, 0) : Color.FromArgb(192, 0, 0));
+      else
+        c = poly==selectedPoly ? poly.Color : Color.FromArgb(poly.Color.R*3/4, poly.Color.G*3/4, poly.Color.B*3/4);
+
+      if(poly.Points.Length<3)
+      { if(poly.Points.Length>1)
+          Primitives.Line(e.Surface, WorldToWindow(poly.Points[0]), WorldToWindow(poly.Points[1]), c);
+      }
+      else
+      { Point[] points = (Point[])poly.Points.Clone();
+        for(int i=0; i<points.Length; i++) points[i] = WorldToWindow(points[i]);
+        Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
+      }
+      for(int i=0; i<poly.Points.Length; i++)
+      { Point p = WorldToWindow(new Point(poly.Points[i].X-x, poly.Points[i].Y-y));
+        Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
+      }
+    }
+  }
+  #endregion
+
+  #region Other events
   protected override void OnMouseMove(GameLib.Events.MouseMoveEvent e)
   { if(!Focused) Focus();
-    App.Desktop.TopBar.MouseText=(x+e.X).ToString()+'x'+(y+e.Y).ToString();
+    Point pt = WindowToWorld(e.Point);
+    App.Desktop.TopBar.MouseText = pt.X.ToString()+'x'+pt.Y.ToString();
     base.OnMouseMove(e);
   }
   
   protected override void OnMouseClick(ClickEventArgs e)
   { if(editMode==EditMode.Polygons)
     { if(e.CE.Button==0)
-      { e.CE.X+=x; e.CE.Y+=y;
+      { e.CE.Point = WindowToWorld(e.CE.Point);
         if(subMode==SubMode.None)
         { if(!ClickVertex(e.CE.Point))
-          { selectedPoly = new Polygon();
+          { selectedPoly = new Polygon(SelectedType);
             world.Polygons.Add(selectedPoly);
             subMode = SubMode.NewPoly;
           }
         }
-        if(subMode==SubMode.NewPoly) selectedPoly.AddPoint(e.CE.Point);
-        Invalidate();
+        if(subMode==SubMode.NewPoly)
+        { selectedPoly.AddPoint(e.CE.Point);
+          Invalidate(selectedPoly);
+          world.ChangedSinceSave = true;
+        }
         e.Handled = true;
       }
       else if(e.CE.Button==1 && subMode==SubMode.NewPoly)
-      { selectedPoly.RemoveLastPoint();
-        Invalidate();
+      { RemoveLastPoint();
+        e.Handled=true;
+      }
+    }
+    else if(editMode==EditMode.Objects)
+    { if(e.CE.Button==0)
+      { e.CE.Point = WindowToWorld(e.CE.Point);
+        if(!ClickObject(e.CE.Point))
+        { if(selectedObject!=null) Invalidate(selectedObject);
+          selectedObject = new Object(SelectedType);
+          e.CE.X -= selectedObject.Width/2;
+          e.CE.Y -= selectedObject.Height/2;
+          selectedObject.Location = e.CE.Point;
+          world.Layers[layer].Objects.Add(selectedObject);
+          world.ChangedSinceSave = true;
+        }
+        Invalidate(selectedObject);
         e.Handled=true;
       }
     }
@@ -355,34 +475,76 @@ class WorldDisplay : Control
   }
 
   protected override void OnKeyDown(KeyEventArgs e)
-  { if(editMode==EditMode.Polygons)
+  { if(e.KE.Key==Key.Tab && e.KE.KeyMods==KeyMod.None && !drawAll)
+    { drawAll=true;
+      Invalidate();
+      e.Handled=true;
+    }
+    else if(e.KE.Key==Key.Home && e.KE.KeyMods==KeyMod.None)
+    { x = y = 0;
+      Invalidate();
+      e.Handled = true;
+    }
+    else if(editMode==EditMode.Polygons)
     { e.Handled=true;
       if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
-      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
-      { selectedPoly = null;
+      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter && selectedPoly!=null)
+      { Invalidate(selectedPoly);
+        selectedPoly = null;
         subMode = SubMode.None;
-        Invalidate();
       }
       else if(subMode==SubMode.NewPoly)
       { if(e.KE.Key==Key.Backspace)
         { if(selectedPoly.Points.Length==1) RemoveSelectedPoly();
-          else selectedPoly.RemoveLastPoint();
-          Invalidate();
+          else RemoveLastPoint();
         }
         else if(e.KE.Key==Key.Escape) RemoveSelectedPoly();
         else e.Handled=false;
       }
     }
+    else if(editMode==EditMode.Objects)
+    { e.Handled=true;
+      if(e.KE.Key==Key.Delete && selectedObject!=null)
+      { Invalidate(selectedObject);
+        world.Layers[layer].Objects.Remove(selectedObject);
+        selectedObject=null;
+        world.ChangedSinceSave = true;
+      }
+      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter && selectedObject!=null)
+      { Invalidate(selectedObject);
+        selectedObject = null;
+      }
+      else e.Handled=false;
+    }
+    if(e.Handled) Desktop.StopKeyRepeat();
     base.OnKeyDown(e);
+  }
+
+  protected override void OnKeyUp(KeyEventArgs e)
+  { if(e.KE.Key==Key.Tab && drawAll)
+    { drawAll = false;
+      Invalidate();
+      e.Handled = true;
+    }
+    base.OnKeyUp(e);
   }
   
   protected override void OnDragStart(DragEventArgs e)
   { if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None)
       { if(e.Buttons==1)
-        { e.Start.X += x;
-          e.Start.Y += y;
-          if(ClickVertex(e.Start)) subMode=SubMode.DragPoint;
+        { e.Start = WindowToWorld(e.Start);
+          if(ClickVertex(e.Start)) subMode=SubMode.DragSelected;
+          else e.Cancel=true;
+          goto done;
+        }
+      }
+    }
+    else if(editMode==EditMode.Objects)
+    { if(subMode==SubMode.None)
+      { if(e.Buttons==1)
+        { e.Start = WindowToWorld(e.Start);
+          if(ClickObject(e.Start)) subMode=SubMode.DragSelected;
           else e.Cancel=true;
           goto done;
         }
@@ -395,59 +557,23 @@ class WorldDisplay : Control
   
   protected override void OnDragMove(DragEventArgs e)
   { if(e.Buttons==4) DragScroll(e);
-    else if(e.Buttons==1 && editMode==EditMode.Polygons && subMode==SubMode.DragPoint) DragPoint(e);
+    else if(e.Buttons==1 && subMode==SubMode.DragSelected)
+    { if(editMode==EditMode.Polygons) DragPoint(e);
+      else if(editMode==EditMode.Objects) DragObject(e);
+    }
     base.OnDragMove(e);
   }
+
   protected override void OnDragEnd(DragEventArgs e)
   { if(e.Buttons==4) DragScroll(e);
-    else if(e.Buttons==1 && editMode==EditMode.Polygons && subMode==SubMode.DragPoint)
-    { DragPoint(e);
+    else if(e.Buttons==1 && subMode==SubMode.DragSelected)
+    { if(editMode==EditMode.Polygons) DragPoint(e);
+      else if(editMode==EditMode.Objects) DragObject(e);
       subMode = SubMode.None;
     }
     base.OnDragEnd(e);
   }
 
-  enum SubMode { None, NewPoly, DragPoint };
-
-  bool ClickVertex(Point pt)
-  { foreach(Polygon poly in world.Polygons)
-      for(int i=0; i<poly.Points.Length; i++)
-      { Point p = poly.Points[i];
-        if(pt.X>=p.X-1 && pt.X<=p.X+1 && pt.Y>=p.Y-1 && pt.Y<=p.Y+1)
-        { selectedPoly = poly;
-          selectedPoint = i;
-          return true;
-        }
-      }
-    return false;
-  }
-
-  void DragScroll(DragEventArgs e)
-  { x -= e.End.X-e.Start.X;
-    y -= e.End.Y-e.Start.Y;
-    if(x<0) x=0;
-    else if(x>world.Width-Width) x=world.Width-Width;
-    if(y<0) y=0;
-    else if(y>world.Height-Height) y=world.Height-Height;
-    e.Start = e.End;
-    Invalidate();
-  }
-  
-  void DragPoint(DragEventArgs e)
-  { e.End.X += x; e.End.Y += y;
-    selectedPoly.Points[selectedPoint].X += e.End.X-e.Start.X;
-    selectedPoly.Points[selectedPoint].Y += e.End.Y-e.Start.Y;
-    e.Start = e.End;
-    Invalidate();
-  }
-  
-  void RemoveSelectedPoly()
-  { world.Polygons.Remove(selectedPoly);
-    selectedPoly = null;
-    Invalidate();
-    subMode = SubMode.None;
-  }
-  
   void type_OnSelect(object sender, EventArgs e)
   { if(editMode==EditMode.Objects)
     { ObjectDef def = (ObjectDef)((MenuItemBase)sender).Tag;
@@ -458,13 +584,123 @@ class WorldDisplay : Control
       App.Desktop.TopBar.TypeMenu.Text = def.Type;
     }
   }
+  #endregion
+
+  enum SubMode { None, NewPoly, DragSelected };
+
+  #region Private methods
+  bool ClickVertex(Point pt)
+  { foreach(Polygon poly in world.Polygons)
+      for(int i=0; i<poly.Points.Length; i++)
+      { Point p = poly.Points[i];
+        if(pt.X>=p.X-1 && pt.X<=p.X+1 && pt.Y>=p.Y-1 && pt.Y<=p.Y+1)
+        { selectedPoly = poly;
+          selectedPoint = i;
+          Invalidate(poly);
+          return true;
+        }
+      }
+    return false;
+  }
+
+  bool ClickObject(Point pt)
+  { foreach(Object obj in world.Layers[layer].Objects)
+      if(obj.Bounds.Contains(pt))
+      { if(obj!=selectedObject)
+        { if(selectedObject!=null) Invalidate(selectedObject);
+          selectedObject = obj;
+          Invalidate(obj);
+        }
+        return true;
+      }
+    return false;
+  }
+
+  void DragScroll(DragEventArgs e)
+  { e.End = WindowToWorld(e.End);
+    x -= e.End.X-e.Start.X;
+    y -= e.End.Y-e.Start.Y;
+    e.Start = e.End;
+    Invalidate();
+  }
+  
+  void DragPoint(DragEventArgs e)
+  { e.End = WindowToWorld(e.End);
+    Invalidate(selectedPoly);
+    selectedPoly.Points[selectedPoint].X += e.End.X-e.Start.X;
+    selectedPoly.Points[selectedPoint].Y += e.End.Y-e.Start.Y;
+    Invalidate(selectedPoly);
+    e.Start = e.End;
+    world.ChangedSinceSave = true;
+  }
+  
+  void DragObject(DragEventArgs e)
+  { e.End = WindowToWorld(e.End);
+    Point pos = selectedObject.Location;
+    pos.Offset(e.End.X-e.Start.X, e.End.Y-e.Start.Y);
+    Invalidate(selectedObject);
+    selectedObject.Location = pos;
+    Invalidate(selectedObject);
+    e.Start = e.End;
+    world.ChangedSinceSave = true;
+  }
+
+  void Invalidate(Object obj) { Invalidate(WorldToWindow(obj.Bounds)); }
+  
+  void Invalidate(Polygon poly)
+  { Rectangle rect = WorldToWindow(poly.Bounds);
+    rect.Inflate(1, 1);
+    Invalidate(rect);
+  }
+
+  void RemoveLastPoint()
+  { if(selectedPoly.Points.Length==1) RemoveSelectedPoly();
+    else
+    { Invalidate(selectedPoly);
+      selectedPoly.RemoveLastPoint();
+      world.ChangedSinceSave = true;
+    }
+  }
+  
+  void RemoveSelectedPoly()
+  { Invalidate(selectedPoly);
+    world.Polygons.Remove(selectedPoly);
+    selectedPoly = null;
+    subMode = SubMode.None;
+    world.ChangedSinceSave = true;
+  }
+  
+  Point WindowToWorld(Point worldPoint)
+  { if(zoom==ZoomMode.Full) { worldPoint.X-=x; worldPoint.Y-=y; }
+    else if(zoom==ZoomMode.Quarter) { worldPoint.X = (worldPoint.X-x)*2; worldPoint.Y = (worldPoint.Y-y)*2; }
+    return worldPoint;
+  }
+  Rectangle WindowToWorld(Rectangle worldRect)
+  { worldRect.Location = WindowToWorld(worldRect.Location);
+    if(zoom==ZoomMode.Quarter) { worldRect.Width*=2; worldRect.Height*=2; }
+    return worldRect;
+  }
+  Point WorldToWindow(Point worldPoint)
+  { if(zoom==ZoomMode.Full) { worldPoint.X-=x; worldPoint.Y-=y; }
+    else if(zoom==ZoomMode.Quarter) { worldPoint.X = (worldPoint.X-x)/2; worldPoint.Y = (worldPoint.Y-y)/2; }
+    return worldPoint;
+  }
+  Rectangle WorldToWindow(Rectangle worldRect)
+  { worldRect.Location = WorldToWindow(worldRect.Location);
+    if(zoom==ZoomMode.Quarter) { worldRect.Width/=2; worldRect.Height/=2; }
+    return worldRect;
+  }
+  #endregion
 
   World world = new World();
   EventHandler typeSel;
-  int x, y, selectedPoint;
-  EditMode editMode=EditMode.ViewOnly;
+  Polygon   selectedPoly;
+  Object    selectedObject;
+  int x, y, layer, selectedPoint;
+  EditMode editMode;
   SubMode  subMode;
-  Polygon  selectedPoly;
+  ZoomMode zoom;
+  bool     drawAll;
 }
 #endregion
 
@@ -555,8 +791,9 @@ class FileChooser : Form
                     }
                     SetDefaultLabel();
                   }
+                  i--;
                   done:
-                  if(--i>0)
+                  if(i>0)
                   { this.path.Text = path.Substring(0, pos+1)+names[0].Substring(0, i);
                     this.path.Select(this.path.Text.Length, 0);
                   }

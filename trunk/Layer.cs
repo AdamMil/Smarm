@@ -6,14 +6,6 @@ using GameLib.Video;
 namespace Smarm
 {
 
-class Object
-{ public Object(List list) { this.list=list; }
-
-  public string Type { get { return list.Name; } }
-
-  List list;
-}
-
 class Layer : IDisposable
 { public Layer() { Clear(); }
   public Layer(List list, string basePath) { Load(list, basePath); }
@@ -26,6 +18,7 @@ class Layer : IDisposable
 
   public int Width  { get { return width*PartWidth;   } }
   public int Height { get { return height*PartHeight; } }
+  public IList Objects { get { return objects; } }
 
   public void Clear()
   { objects = new ArrayList();
@@ -66,21 +59,63 @@ class Layer : IDisposable
     }
   }
 
-  public void Render(Surface dest, int sx, int sy, Rectangle drect)
-  { int bx=sx/PartWidth, by=sy/PartHeight;
+  public void Render(Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom, bool renderObjects, Object hilite)
+  { int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight;
     sx %= PartWidth; sy %= PartHeight;
-    // FIXME: handle clipping
 
     for(int xi=0, dx=drect.X; dx<drect.Right; xi++)
-    { for(int yi=0, dy=drect.Y; dy<drect.Bottom; yi++)
-      { Point sloc = new Point(xi==0 ? sx : 0, yi==0 ? sy : 0);
-        Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
-                                        Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
-        if(surfaces[by+yi, bx+xi]!=null) surfaces[by+yi, bx+xi].Blit(dest, srect, dx, dy);
-        dy += yi==0 ? PartHeight-sy : PartHeight;
-      }
+    { if(bx+xi>width) break;
+      if(bx+xi>=0)
+        for(int yi=0, dy=drect.Y; dy<drect.Bottom; yi++)
+        { if(by+yi>height) break;
+          if(by+yi>=0)
+          { Point sloc = new Point(xi==0 ? sx : 0, yi==0 ? sy : 0);
+            Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
+                                            Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
+            if(surfaces[by+yi, bx+xi]!=null) surfaces[by+yi, bx+xi].Blit(dest, srect, dx, dy);
+          }
+          dy += yi==0 ? PartHeight-sy : PartHeight;
+        }
       dx += xi==0 ? PartWidth-sx : PartWidth;
     }
+    
+    if(renderObjects)
+      foreach(Object o in objects)
+      { Rectangle bounds = o.Bounds;
+        bounds.Offset(drect.X-osx, drect.Y-osy);
+        if(bounds.IntersectsWith(drect)) o.Blit(dest, bounds.X, bounds.Y, o==hilite);
+      }
+  }
+
+  public void Save(string path, System.IO.TextWriter writer, Color backColor, int layerNum, bool compile)
+  { string header = string.Format("  (layer {0}", layerNum);
+    int img=0;
+    bool tiles=false;
+    for(int x=0; x<width; x++)
+      for(int y=0; y<height; y++)
+        if(surfaces[y, x]!=null && NotEmpty(surfaces[y, x], backColor))
+        { string fn = (compile ? "clayer" : "layer") + layerNum + '_' + img++ + ".png";
+          if(!tiles)
+          { writer.WriteLine(header);
+            writer.WriteLine("    (tiles");
+            tiles=true;
+          }
+          writer.WriteLine("      (tile \"{0}\" (pos {1} {2}))", fn, x*PartWidth, y*PartHeight);
+          if(compile) throw new NotImplementedException("compile not implemented");
+          else surfaces[y, x].Save(path+fn, ImageType.PNG);
+        }
+    if(tiles) writer.WriteLine("    )");
+    else
+    { if(objects.Count==0) return;
+      writer.WriteLine("  (layer {0}", layerNum);
+    }
+
+    if(objects.Count>0)
+    { writer.WriteLine("    (objects");
+      foreach(Object o in objects) o.Save(writer);
+      writer.WriteLine("    )");
+    }
+    writer.WriteLine("  )");
   }
 
   void Load(List list, string basePath)
@@ -88,7 +123,7 @@ class Layer : IDisposable
 
     List objects = list["objects"];
     if(objects!=null) foreach(List obj in objects) this.objects.Add(new Object(obj));
-    
+
     List tiles = list["tiles"];
     if(tiles!=null)
       foreach(List image in tiles)
@@ -96,6 +131,16 @@ class Layer : IDisposable
         List pos = image["pos"];
         InsertSurface(surf, pos.GetInt(0), pos.GetInt(1));
       }
+  }
+  
+  bool NotEmpty(Surface s, Color back)
+  { Color c;
+    for(int x=0; x<s.Width; x++)
+      for(int y=0; y<s.Height; y++)
+      { c = s.GetPixel(x, y);
+        if(c.A!=0 && c!=back) return true;
+      }
+    return false;
   }
 
   const int PartWidth=128, PartHeight=64;
