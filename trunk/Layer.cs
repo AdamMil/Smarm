@@ -35,6 +35,8 @@ class Layer : IDisposable
     GC.SuppressFinalize(this);
   }
 
+  public const int PartWidth=128, PartHeight=64;
+
   public int Width  { get { return width*PartWidth;   } }
   public int Height { get { return height*PartHeight; } }
   public IList Objects { get { return objects; } }
@@ -217,8 +219,6 @@ class Layer : IDisposable
     ret.Unlock(); s.Unlock();
     return ret;
   }
-
-  const int PartWidth=128, PartHeight=64;
 
   ArrayList objects;
   Surface[,] full, fourth, sixteenth;

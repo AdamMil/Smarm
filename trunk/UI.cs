@@ -1,6 +1,6 @@
 /*
 Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
-http://www.adammil.net
+http://www.adammil.net/
 Copyright (C) 2003-2004 Adam Milazzo
 
 This program is free software; you can redistribute it and/or
@@ -70,7 +70,7 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
-    menu.Add(new MenuItem("Edit in paint program", 'E')).Click += new EventHandler(exportRect_OnClick);
+    menu.Add(new MenuItem("Edit in paint program", 'E')).Click += new EventHandler(editRect_OnClick);
     menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(KeyMod.None, Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L'));
     menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
@@ -189,10 +189,6 @@ class TopBar : ContainerControl
 
   public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
 
-  public void ExportRect()
-  {
-  }
-  
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
     Color color = Color.FromArgb(80, 80, 80);
@@ -220,7 +216,7 @@ class TopBar : ContainerControl
   void compile_OnClick(object sender, EventArgs e) { Compile(); }
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
-  void exportRect_OnClick(object sender, EventArgs e) { ExportRect(); }
+  void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
   { if(new ObjectProperties(App.SetupObject).Show(Desktop))
@@ -414,6 +410,32 @@ class WorldDisplay : Control
     Invalidate();
   }
 
+  public void EditRect()
+  { bool dontQuit=false;
+
+    Capture=true; // we'll use a modal approach
+    try
+    { selectMode = SelectMode.TopLeft;
+
+      App.Desktop.StatusText = "Select top-left point of the rectangle to export...";
+      while(selectMode==SelectMode.TopLeft && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(selectMode==SelectMode.None || !dontQuit) goto abort;
+
+      App.Desktop.StatusText = "Select bottom-right point of the rectangle to export...";
+      while(selectMode==SelectMode.BottomRight && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(selectMode==SelectMode.None || !dontQuit) goto abort;
+
+      App.Desktop.StatusText = "Waiting for edit to complete...";
+      world.EditRect(selectedRect, Font);
+      Invalidate();
+      App.Desktop.StatusText = "Import completed.";
+
+      abort:
+      if(dontQuit) App.Desktop.StatusText = "Edit process aborted.";
+    }
+    finally { selectMode=SelectMode.None; Capture=false; }
+  }
+
   public void Load(string directory)
   { Clear();
     world.Load(directory);
@@ -489,7 +511,22 @@ class WorldDisplay : Control
   }
   
   protected override void OnMouseClick(ClickEventArgs e)
-  { if(editMode==EditMode.Polygons)
+  { if(selectMode!=SelectMode.None)
+    { if(e.CE.Button==0)
+      { e.Handled=true;
+        if(selectMode==SelectMode.TopLeft)
+        { selectedRect.Location = WindowToWorld(e.CE.Point);
+          selectMode=SelectMode.BottomRight;
+        }
+        else
+        { Point br = WindowToWorld(e.CE.Point);
+          selectedRect.Width  = br.X-selectedRect.X;
+          selectedRect.Height = br.Y-selectedRect.Y;
+          selectMode=SelectMode.Done;
+        }
+      }
+    }
+    else if(editMode==EditMode.Polygons)
     { if(e.CE.Button==0)
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(subMode==SubMode.None)
@@ -638,6 +675,7 @@ class WorldDisplay : Control
   #endregion
 
   enum SubMode { None, NewPoly, DragSelected };
+  enum SelectMode { None, TopLeft, BottomRight, Done };
 
   #region Private methods
   bool ClickVertex(Point pt)
@@ -784,12 +822,14 @@ class WorldDisplay : Control
 
   World world = new World();
   EventHandler typeSel;
+  Rectangle selectedRect;
   Polygon   selectedPoly;
   Object    selectedObject;
   int x, y, layer, selectedPoint;
   EditMode editMode;
   SubMode  subMode;
   ZoomMode zoom;
+  SelectMode selectMode;
   bool     drawAll;
 }
 #endregion

@@ -95,6 +95,14 @@ class World : IDisposable
     GC.SuppressFinalize(this);
   }
 
+  public void EditRect(Rectangle rect, GameLib.Fonts.Font objectFont)
+  { // expand the rectangle dimensions to multiples of the block size
+    rect.X = Expand(rect.X, Layer.PartWidth, -1);
+    rect.Y = Expand(rect.Y, Layer.PartHeight, -1);
+    rect.Width = Expand(rect.Right, Layer.PartWidth, 1) - rect.X;
+    rect.Height = Expand(rect.Bottom, Layer.PartHeight, 1) - rect.Y;
+  }
+
   public void Load(string directory)
   { if(!Directory.Exists(directory))
       throw new DirectoryNotFoundException(string.Format("Directory '{0}' not found", directory));
@@ -149,6 +157,10 @@ class World : IDisposable
     zip.Finish();
     zip.Close();
     changed = false;
+  }
+  
+  int Expand(int value, int block, int sign)
+  { return value + (value<0 ? (block - value%block) : (value + value%block)) * sign;
   }
 
   ArrayList polygons = new ArrayList();
