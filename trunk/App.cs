@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using GameLib;
 using GameLib.Events;
 using GameLib.Forms;
@@ -9,6 +10,7 @@ namespace Smarm
 
 class App
 { private App() { }
+  static App() { LoadObjects(); }
 
   public static SmarmDesktop Desktop { get { return desktop; } }
 
@@ -70,6 +72,12 @@ class App
     desktop.Surface = Video.DisplaySurface;
     desktop.Bounds  = Video.DisplaySurface.Bounds;
     desktop.Invalidate();
+  }
+
+  static void LoadObjects()
+  { List objList = new List(File.Open(SmarmPath+"objects", FileMode.Open));
+    ObjectDef.LoadDefs(objList["objects"]);
+    PolygonType.LoadDefs(objList["polygon-types"]);
   }
 
   static SmarmDesktop desktop = new SmarmDesktop();

@@ -30,6 +30,7 @@ class List : IEnumerable
 
   public void Clear() { Name=string.Empty; items.Clear(); }
   
+  public double GetFloat(int index) { return (double)items[index]; }
   public int GetInt(int index) { return (int)(double)items[index]; }
   public List GetList(int index) { return (List)items[index]; }
   public string GetString(int index) { return (string)items[index]; }
