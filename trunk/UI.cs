@@ -767,22 +767,24 @@ class WorldDisplay : Control
 
   protected override void OnDragStart(DragEventArgs e)
   { Point pt = WindowToWorld(e.Start);
-    if(editMode==EditMode.Polygons)
-    { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
-      { if(e.OnlyPressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt, true)))
-        { oldSubMode=subMode;
-          subMode=SubMode.DragSelected;
-          goto done;
-        }
-        else if(subMode==SubMode.NewPoly && !e.OnlyPressed(MouseButton.Right))
-        { e.Cancel=true;
-          goto done;
+    if(selectMode==SelectMode.None)
+    { if(editMode==EditMode.Polygons)
+      { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
+        { if(e.OnlyPressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt, true)))
+          { oldSubMode=subMode;
+            subMode=SubMode.DragSelected;
+            goto done;
+          }
+          else if(subMode==SubMode.NewPoly && !e.OnlyPressed(MouseButton.Right))
+          { e.Cancel=true;
+            goto done;
+          }
         }
       }
-    }
-    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, true))
-    { subMode=SubMode.DragSelected;
-      goto done;
+      else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, true))
+      { subMode=SubMode.DragSelected;
+        goto done;
+      }
     }
 
     if(e.OnlyPressed(MouseButton.Left)) subMode = SubMode.DragRectangle;

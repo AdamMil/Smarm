@@ -54,16 +54,16 @@ class Layer : IDisposable
     }
     surfaces = new Hashtable();
     mru = new LinkedList();
-    full = new string[32, 32];
-    fourth = new string[8, 8];
-    sixteenth = new string[2, 2];
+    full = new Tile[32, 32];
+    fourth = new Tile[8, 8];
+    sixteenth = new Tile[2, 2];
     width = height = 0;
   }
 
   public void ClearTiles(Rectangle rect)
-  { Clear(full, rect.X*4, rect.Y*4, rect.Width*4, rect.Height*4);
-    Clear(fourth, rect.X, rect.Y, rect.Width, rect.Height);
-    Clear(sixteenth, rect.X/4, rect.Y/4, rect.Width/4, rect.Height/4);
+  { ClearZC(full, rect.X*4, rect.Y*4, rect.Width*4, rect.Height*4);
+    ClearZC(fourth, rect.X, rect.Y, rect.Width, rect.Height);
+    ClearZC(sixteenth, rect.X/4, rect.Y/4, rect.Width/4, rect.Height/4);
   }
 
   public void InsertSurface(Surface s, int fx, int fy)
@@ -88,13 +88,14 @@ class Layer : IDisposable
   /* render the world starting at full-coord fx,fy into dest's drect using the zoom level specified */
   public void Render(Surface dest, int fx, int fy, Rectangle drect, ZoomMode zoom,
                      bool renderObjects, Object[] hilite, bool blend)
-  { fx /= (int)zoom; fy /= (int)zoom; // convert to zoomed coordinates
-    int ozx=fx, ozy=fy, bx=fx/PartWidth, by=fy/PartHeight, bw=(width+(int)zoom-1)/(int)zoom, bh=(height+(int)zoom-1)/(int)zoom;
-    fx %= PartWidth; fy %= PartHeight; // fx,fy become the offset into the first block
+  { fx = FloorDiv(fx, (int)zoom); fy = FloorDiv(fy, (int)zoom); // convert to zoomed coordinates
+    int ozx=fx, ozy=fy, bx=FloorDiv(fx, PartWidth), by=FloorDiv(fy, PartHeight), bw=(width+(int)zoom-1)/(int)zoom, bh=(height+(int)zoom-1)/(int)zoom;
+    fx %= PartWidth; fy %= PartHeight; if(fx<0) fx=PartWidth+fx; if(fy<0) fy=PartHeight+fy;
+    // fx,fy become the offset into the first block
     // ozx,ozy hold the old zoom coordinates. bx,by are the index of the starting block.
     // bw,bh are the width/height of the array we'll be using
 
-    string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+    Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
 
     for(int xi=0, dx=drect.X; dx<=drect.Right; xi++)
     { if(bx+xi>=bw) break;
@@ -113,9 +114,15 @@ class Layer : IDisposable
             { Point sloc = new Point(xi==0 ? fx : 0, yi==0 ? fy : 0);
               Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
                                               Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
-              cs.Surface.UsingAlpha = blend; // if 'blend', do alpha blending. otherwise, copy the alpha information
-              cs.Surface.Blit(dest, srect, dx, dy);
-              cs.Surface.UsingAlpha = true;
+              if(cs.Color.A==0)
+              { cs.Surface.UsingAlpha = blend; // if 'blend', do alpha blending. otherwise, copy the alpha information
+                cs.Surface.Blit(dest, srect, dx, dy);
+                cs.Surface.UsingAlpha = true;
+              }
+              else
+              { srect.Location = new Point(dx, dy);
+                Primitives.FilledBox(dest, srect, Color.FromArgb(blend ? cs.Color.A : (byte)255, cs.Color));
+              }
             }
           }
           dy += yi==0 ? PartHeight-fy : PartHeight;
@@ -198,21 +205,37 @@ class Layer : IDisposable
     SyncScaledSizes();          // and the scaled widths, too
   }
 
-  void Clear(string[,] array) // remove all surfaces in an array
+  void CheckSolid(Tile[,] array, int bx, int by)
+  { CachedSurface cs = GetSurface(array, bx, by);
+    Color c = cs.Surface.GetPixel(0, 0);
+    if(IsSolid(cs.Surface, c))
+    { cs.Color = array[by,bx].Color = c;
+      cs.Surface.Dispose();
+      cs.Surface = null;
+      cached--;
+    }
+  }
+
+  void Clear(Tile[,] array) // remove all surfaces in an array
   { int w=array.GetLength(1), h=array.GetLength(0);
-    for(int y=0; y<h; y++) for(int x=0; x<w; x++) RemoveSurface(array, x, y);
+    for(int y=0; y<h; y++) for(int x=0; x<w; x++) RemoveTile(array, x, y);
   }
 
-  // remove a rectangle of surfaces in an array
-  void Clear(string[,] array, int zx, int zy, int zw, int zh)
-  { int bx=zx/PartWidth, by=zy/PartHeight, bw=(zw+PartWidth-1)/PartWidth, bh=(zh+PartHeight-1)/PartHeight;
-    bw = Math.Min(bw, array.GetLength(1)-bx); bh = Math.Min(bh, array.GetLength(0)-by);
-    for(int yi=0; yi<bh; yi++) for(int xi=0; xi<bw; xi++) RemoveSurface(array, bx+xi, by+yi);
+  // remove a rectangle of tiles in an array, given array coordinates
+  void Clear(Tile[,] array, int x, int y, int w, int h)
+  { w = Math.Min(w, array.GetLength(1)-x); h = Math.Min(h, array.GetLength(0)-y);
+    for(int yi=0; yi<h; yi++) for(int xi=0; xi<w; xi++) RemoveTile(array, x+xi, y+yi);
   }
 
-  // return a cachedsurface for the given array element, loading it first if necessary
-  CachedSurface GetSurface(string[,] array, int x, int y)
-  { string name = array[y, x];
+  // remove a rectangle of tiles in an array, given pixel coordinates
+  void ClearZC(Tile[,] array, int zx, int zy, int zw, int zh)
+  { Clear(array, zx/PartWidth, zy/PartHeight, (zw+PartWidth-1)/PartWidth, (zh+PartHeight-1)/PartHeight);
+  }
+
+  // return a CachedSurface for the given array element, loading it first if necessary
+  CachedSurface GetSurface(Tile[,] array, int x, int y)
+  { Tile tile = array[y, x];
+    string name = tile.Name;
     if(name==null) return null;
 
     CachedSurface cs;
@@ -223,34 +246,64 @@ class Layer : IDisposable
       cs = (CachedSurface)node.Data;
     }
     else
-    { cs = new CachedSurface(name);
-      if(File.Exists(world.basePath+name))
-      { cs.Surface = new Surface(world.basePath+name, ImageType.PNG);
-        cs.Changed = true;
-        cs.Name = world.NextTile.ToString()+".png";
+    { cs = new CachedSurface(name, tile.Color);
+      if(cs.Color.A==0)
+      { if(File.Exists(world.basePath+name))
+        { cs.Surface = new Surface(world.basePath+name, ImageType.PNG);
+          cs.Changed = true;
+          cs.Name = world.NextTile.ToString()+".png";
+        }
+        else if(world.fsFile!=null)
+        { cs.Surface = new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);
+        }
+        else throw new ArgumentException("Unable to load surface");
+        cached++;
       }
-      else if(world.fsFile!=null)
-      { cs.Surface = new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);
-      }
-      else throw new ArgumentException("Unable to load surface");
       surfaces[name] = mru.Prepend(cs);
     }
     UnloadOldTiles();
     return cs;
   }
   
+  void InsertColor(Color c, int zx, int zy, ZoomMode zoom)
+  { int ozx=zx, ozy=zy, bx=zx/PartWidth, by=zy/PartHeight;
+    zx %= PartWidth; zy %= PartHeight;
+    // ozx,ozy = original zoom coords. zx,zy = offset into the block
+
+    Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+    CachedSurface cs = GetSurface(surfaces, bx, by);
+    if(cs==null) cs = SetSurface(surfaces, bx, by);
+    if(cs.Color.A!=0)
+    { if(c==cs.Color) return;
+      cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
+      cs.Surface.Fill(cs.Color);
+      cs.Color = surfaces[by, bx].Color = Color.Transparent;
+      cached++;
+      UnloadOldTiles();
+    }
+    cs.Surface.Fill(new Rectangle(zx, zy, PartWidth/4, PartHeight/4), c);
+    CheckSolid(surfaces, bx, by);
+    cs.Changed = true;
+
+    if(zoom==ZoomMode.Full)
+    { Clear(fourth, ozx/4, ozy/4, 1, 1);
+      Clear(sixteenth, ozx/16, ozy/16, 1, 1);
+    }
+    else if(zoom==ZoomMode.Normal) Clear(sixteenth, ozx/4, ozy/4, 1, 1);
+  }
+
   // insert a surface name into an array (used during level loading)
-  void InsertSurface(string name, Point pos, ZoomMode zoom)
-  { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+  void InsertSurface(string name, Color color, Point pos, ZoomMode zoom)
+  { Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     int x=pos.X/PartWidth, y=pos.Y/PartHeight;
-    string[,] narr = ResizeTo(surfaces, x+1, y+1);
+    Tile[,] narr = ResizeTo(surfaces, x+1, y+1);
     if(narr!=surfaces)
     { if(zoom==ZoomMode.Full) full=narr;
       else if(zoom==ZoomMode.Normal) fourth=narr;
       else sixteenth=narr;
       surfaces=narr;
     }
-    surfaces[y, x] = name;
+    surfaces[y, x] = new Tile(name, color);
     if(x+1>width)  width=x+1;
     if(y+1>height) height=y+1;
   }
@@ -258,12 +311,12 @@ class Layer : IDisposable
   // insert a surface into a zoom level, chopping it up as appropriate
   void InsertSurface(Surface s, int zx, int zy, ZoomMode zoom, bool checkEmpty)
   { s = s.CloneDisplay();
-    int ozx=zx, ozy=zy, bx=zx/PartWidth, by=zy/PartHeight;
+    int bx=zx/PartWidth, by=zy/PartHeight;
     zx %= PartWidth; zy %= PartHeight;
     int bw=(zx+s.Width+PartWidth-1)/PartWidth, bh=(zy+s.Height+PartHeight-1)/PartHeight;
-    // ozx,ozy = original zoom coords. zx,zy = offset into first block. bw,bh = number of affected blocks
+    // zx,zy = offset into first block. bw,bh = number of affected blocks
 
-    string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth), narr;
+    Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth), narr;
     narr = ResizeTo(surfaces, bx+bw, by+bh);
     if(narr != surfaces)
     { if(zoom==ZoomMode.Full) full=narr;
@@ -273,31 +326,38 @@ class Layer : IDisposable
     }
 
     s.UsingAlpha = false; // copy alpha information. don't blend.
-    for(int xi=0, sx=0; xi<bw; xi++)
-    { for(int yi=0, sy=0; yi<bh; yi++)
+    for(int xi=0, sx=0; xi<bw; sx += xi==0 ? PartWidth-zx : PartWidth, xi++)
+      for(int yi=0, sy=0; yi<bh; sy += yi==0 ? PartHeight-zy : PartHeight, yi++)
       { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
         if(cs==null)
         { cs = SetSurface(surfaces, bx+xi, by+yi);
           width  = Math.Max(width,  bx+xi+1);
           height = Math.Max(height, by+yi+1);
         }
+        if(cs.Color.A!=0)
+        { if(IsSolid(s, cs.Color)) continue;
+          cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
+          cs.Surface.Fill(cs.Color);
+          cs.Color = surfaces[by+yi, bx+xi].Color = Color.Transparent;
+          cached++;
+          UnloadOldTiles();
+        }
         Point dpt = new Point(xi==0 ? zx : 0, yi==0 ? zy : 0);
         Rectangle srect = new Rectangle(sx, sy, Math.Min(PartWidth-dpt.X, s.Width-xi*PartWidth),
                                         Math.Min(PartHeight-dpt.Y, s.Height-yi*PartHeight));
         s.Blit(cs.Surface, srect, dpt);
 
-        if(checkEmpty && IsEmpty(cs.Surface)) RemoveSurface(surfaces, bx+xi, by+yi);
-        else cs.Changed = true;
-
-        sy += srect.Height;
+        if(checkEmpty && IsEmpty(cs.Surface)) RemoveTile(surfaces, bx+xi, by+yi);
+        else
+        { CheckSolid(surfaces, bx+xi, by+yi);
+          cs.Changed = true;
+        }
       }
-      sx += xi==0 ? PartWidth-zx : PartWidth;
-    }
     
     // FIXME: if the surface has area (shouldn't it always?!), clear the affected scaled blocks
     if(s.Width>1 && s.Height>1 && zoom==ZoomMode.Full)
-    { Clear(fourth, ozx/4, ozy/4, s.Width, s.Height);
-      Clear(sixteenth, ozx/16, ozy/16, s.Width, s.Height);
+    { Clear(fourth, bx/4, by/4, (bx+bw+3)/4-bx/4, (by+bh+3)/4-by/4);
+      Clear(sixteenth, bx/16, by/16, (bx+bw+15)/16-bx/16, (by+bh+15)/16-by/16);
     }
   }
 
@@ -305,10 +365,12 @@ class Layer : IDisposable
   { int len = Math.Min(s.Width, s.Height);
     s.Lock();
     try
-    { for(int i=0; i<len; i++) if(s.GetPixel(i, i).A!=0) return false; // first check diagonally
-      for(int i=0; i<len; i++) if(s.GetPixel(s.Width-i-1, i).A!=0) return false;
-      for(int i=0; i<len; i++) if(s.GetPixel(i, s.Height-i-1).A!=0) return false;
-      for(int i=1; i<=len; i++) if(s.GetPixel(s.Width-i, s.Height-i).A!=0) return false;
+    { for(int i=0; i<len; i++) // first check diagonally
+      { if(s.GetPixel(i, i).A!=0) return false;
+        if(s.GetPixel(s.Width-i-1, i).A!=0) return false;
+        if(s.GetPixel(i, s.Height-i-1).A!=0) return false;
+        if(s.GetPixel(s.Width-i-1, s.Height-i-1).A!=0) return false;
+      }
       for(int x=0; x<s.Width; x++) // then check the entire surface
         for(int y=0; y<s.Height; y++) if(s.GetPixel(x, y).A!=0) return false;
     }
@@ -316,6 +378,23 @@ class Layer : IDisposable
     return true;
   }
   
+  bool IsSolid(Surface s, Color c)
+  { int len = Math.Min(s.Width, s.Height);
+    s.Lock();
+    try
+    { for(int i=0; i<len; i++) // first check diagonally
+      { if(s.GetPixel(i, i)!=c) return false;
+        if(s.GetPixel(s.Width-i-1, i)!=c) return false;
+        if(s.GetPixel(i, s.Height-i-1)!=c) return false;
+        if(s.GetPixel(s.Width-i-1, s.Height-i-1)!=c) return false;
+      }
+      for(int x=0; x<s.Width; x++) // then check the entire surface
+        for(int y=0; y<s.Height; y++) if(s.GetPixel(x, y)!=c) return false;
+    }
+    finally { s.Unlock(); }
+    return true;
+  }
+
   void Load(List list)
   { Clear();
 
@@ -327,36 +406,40 @@ class Layer : IDisposable
     { foreach(List image in tiles)
       { ZoomMode zoom = ZoomMode.Full;
         if(image["zoom"]!=null) zoom = (ZoomMode)image["zoom"].GetInt(0);
-        InsertSurface(image.GetString(0), image["pos"].ToPoint(), zoom);
+        Color color = image.Contains("color") ? image["color"].ToColor() : Color.Transparent;
+        InsertSurface(image.GetString(0), color, image["pos"].ToPoint(), zoom);
       }
       SyncScaledSizes();
     }
   }
 
-  // remove a surface and delete it from the disk if it's been swapped out
-  void RemoveSurface(string[,] array, int x, int y)
-  { string name = array[y, x];
+  // remove a surface and delete it from the disk
+  void RemoveTile(Tile[,] array, int x, int y)
+  { string name = array[y, x].Name;
     if(name==null) return;
     LinkedList.Node node = (LinkedList.Node)surfaces[name];
     CachedSurface cs = node==null ? null : (CachedSurface)node.Data;
     if(cs!=null)
-    { cs.Surface.Dispose();
+    { if(cs.Color.A==0)
+      { cs.Surface.Dispose();
+        cached--;
+      }
       mru.Remove(node);
       surfaces.Remove(name);
     }
     if(world.fsFile!=null && world.fsFile.Contains(name)) world.fsFile.DeleteFile(name);
     if(File.Exists(world.basePath+name)) File.Delete(world.basePath+name);
-    array[y, x] = null;
+    array[y, x] = new Tile();
   }
 
   // resize the array to at least widthxheight and return the new array.
   // if no resizing is needed, the old array is returned.
-  string[,] ResizeTo(string[,] array, int width, int height)
+  Tile[,] ResizeTo(Tile[,] array, int width, int height)
   { int owidth = array.GetLength(1), oheight = array.GetLength(0);
     if(width>owidth || height>oheight)
     { int nw=width>owidth ? Math.Max(width, owidth*2) : owidth;
       int nh=height>oheight ? Math.Max(height, oheight*2) : oheight;
-      string[,] narr = new string[nh, nw];
+      Tile[,] narr = new Tile[nh, nw];
       for(int y=0; y<oheight; y++) Array.Copy(array, y*owidth, narr, y*nw, owidth);
       return narr;
     }
@@ -364,7 +447,7 @@ class Layer : IDisposable
   }
   
   void Save(string path, TextWriter writer, FSFile fsfile, int layerNum, bool compile, ZoomMode zoom)
-  { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
+  { Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     MemoryStream ms = new MemoryStream(4096);
     bool newPath = world.basePath!=path;
 
@@ -376,25 +459,39 @@ class Layer : IDisposable
           cs = GetSurface(surfaces, x, y);
         }
         if(cs!=null)
-        { if(IsEmpty(cs.Surface)) RemoveSurface(surfaces, x, y);
-          else
-          { if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
-                                         cs.Name, x*PartWidth+PartWidth/2, y*PartHeight+PartHeight/2, layerNum);
-            else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
-                                  cs.Name, x*PartWidth, y*PartHeight, (int)zoom);
-            if(fsfile==null) cs.Surface.Save(path+cs.Name, ImageType.PNG);
-            else if(cs.Changed || newPath || !fsfile.Contains(cs.Name))
-            { ms.Position = 0;
-              ms.SetLength(0);
-              cs.Surface.Save(ms, ImageType.PNG);
-              Stream stream = fsfile.AddFile(cs.Name, (int)ms.Length);
-              IOH.CopyStream(ms, stream, true);
-              stream.Close();
-              cs.Changed = false;
+        { if(cs.Color.A==0)
+          { if(IsEmpty(cs.Surface)) RemoveTile(surfaces, x, y);
+            else
+            { if(compile)
+                writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
+                                 cs.Name, x*PartWidth+PartWidth/2, y*PartHeight+PartHeight/2, layerNum);
+              else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
+                                    cs.Name, x*PartWidth, y*PartHeight, (int)zoom);
+              if(fsfile==null) cs.Surface.Save(path+cs.Name, ImageType.PNG);
+              else if(cs.Changed || newPath || !fsfile.Contains(cs.Name))
+              { ms.Position = 0;
+                ms.SetLength(0);
+                cs.Surface.Save(ms, ImageType.PNG);
+                Stream stream = fsfile.AddFile(cs.Name, (int)ms.Length);
+                IOH.CopyStream(ms, stream, true);
+                stream.Close();
+                cs.Changed = false;
+              }
             }
-
-            if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
           }
+          else
+          { if(compile)
+              writer.WriteLine("  (stamp (color {0} {1} {2} {3}) (pos {4} {5}) (layer {6}))",
+                               cs.Color.R, cs.Color.G, cs.Color.B, cs.Color.A, 
+                               x*PartWidth+PartWidth/2, y*PartHeight+PartHeight/2, layerNum);
+            else
+              writer.WriteLine("      (tile \"{0}\" (color {1} {2} {3} {4}) (pos {5} {6}) (zoom {7}))",
+                               cs.Name, cs.Color.R, cs.Color.G, cs.Color.B, cs.Color.A,
+                               x*PartWidth, y*PartHeight, (int)zoom);
+            if(fsfile!=null && fsfile.Contains(cs.Name)) fsfile.DeleteFile(cs.Name);
+            cs.Changed = false;
+          }
+          if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
         }
       }
   }
@@ -427,7 +524,7 @@ class Layer : IDisposable
   void ScaleDown(int x, int y, ZoomMode zoom)
   { int zs=(int)zoom/4;
     int pw=(width+zs-1)/zs, ph=(height+zs-1)/zs;
-    string[,] surfaces, pars;
+    Tile[,] surfaces, pars;
     if(zoom==ZoomMode.Normal) { surfaces=fourth; pars=full; }
     else { surfaces=sixteenth; pars=fourth; }
 
@@ -441,37 +538,41 @@ class Layer : IDisposable
           par = GetSurface(pars, bx+xi, by+yi);
         }
         if(par!=null)
-          InsertSurface(ScaleDown(par.Surface), xoff+xi*(PartWidth/4), yoff+yi*(PartHeight/4), zoom, false);
+        { if(par.Color.A==0)
+            InsertSurface(ScaleDown(par.Surface), xoff+xi*(PartWidth/4), yoff+yi*(PartHeight/4), zoom, false);
+          else InsertColor(par.Color, xoff+xi*(PartWidth/4), yoff+yi*(PartHeight/4), zoom);
+        }
       }
   }
     
   // given the index of an empty tile, it creates an empty surface with a new name and fills that space
   // the surface should then be filled with valid data
-  CachedSurface SetSurface(string[,] array, int x, int y)
-  { if(array[y, x]!=null) throw new InvalidOperationException("Tile is not null!");
+  CachedSurface SetSurface(Tile[,] array, int x, int y)
+  { if(array[y, x].Name!=null) throw new InvalidOperationException("Tile is not empty!");
     string name = world.NextTile.ToString() + ".png";
-    array[y, x] = name;
+    array[y, x] = new Tile(name);
 
     CachedSurface cs = new CachedSurface(name);
     cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
     surfaces[name] = mru.Prepend(cs);
+    cached++;
 
     UnloadOldTiles();
     return cs;
   }
 
   // shift an array over by x,y tiles. width,height are the width,heigth of the array's existing data
-  string[,] Shift(string[,] array, int xo, int yo, int width, int height)
-  { string[,] narr;
+  Tile[,] Shift(Tile[,] array, int xo, int yo, int width, int height)
+  { Tile[,] narr;
     int nw=width+xo, nh=height+yo;
     if(nw>array.GetLength(1) || nh>array.GetLength(0))
-      narr = new string[Math.Max(nh, array.GetLength(0)*2), Math.Max(nw, array.GetLength(1)*2)];
+      narr = new Tile[Math.Max(nh, array.GetLength(0)*2), Math.Max(nw, array.GetLength(1)*2)];
     else narr = array;
 
     for(int y=nh-1; y>=yo; y--)
       for(int x=nw-1; x>=xo; x--)
       { narr[y,x] = array[y-yo,x-xo];
-        narr[y-yo,x-xo] = null;
+        narr[y-yo,x-xo] = new Tile();
       }
     return narr;
   }
@@ -484,31 +585,50 @@ class Layer : IDisposable
 
   // unload least recently used tiles from memory, saving them to disk if they've been changed
   void UnloadOldTiles()
-  { while(mru.Count>App.MaxTiles)
-    { CachedSurface old = (CachedSurface)mru.Tail.Data;
+  { LinkedList.Node node = mru.Tail;
+    while(cached>App.MaxTiles)
+    { CachedSurface old;
+      do
+      { old = (CachedSurface)node.Data;
+        node = node.PrevNode;
+      } while(old.Color.A!=0);
       surfaces.Remove(old.Name);
-      mru.Remove(mru.Tail);
+      mru.Remove(node.NextNode);
 
       if(old.Changed)
       { old.Surface.Save(world.basePath+old.Name, ImageType.PNG);
         old.Surface.Dispose();
       }
+      cached--;
     }
   }
 
+  static int FloorDiv(int num, int den)
+  { return (num<0 ? (num-den+1) : num) / den;
+  }
+
   class CachedSurface
-  { public CachedSurface(string name) { Name=name; }  
+  { public CachedSurface(string name) { Name=name; }
+    public CachedSurface(string name, Color color) { Name=name; Color=color; }  
     public Surface Surface;
     public string  Name;
+    public Color   Color;
     public bool Changed;
+  }
+
+  struct Tile
+  { public Tile(string name) { Name=name; Color=Color.Transparent; }
+    public Tile(string name, Color color) { Name=name; Color=color; }
+    public string Name;
+    public Color  Color;
   }
 
   ArrayList  objects;
   Hashtable  surfaces;
   LinkedList mru;
-  string[,]  full, fourth, sixteenth;
+  Tile[,]    full, fourth, sixteenth;
   World      world;
-  int width, height;
+  int width, height, cached;
 }
 
 } // namespace Smarm
