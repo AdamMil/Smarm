@@ -254,6 +254,7 @@ class World : IDisposable
         }
         else if(list.Name=="polygon") polygons.Add(new Polygon(list));
         else if(list.Name==optionsDef.Name) options = new Object(optionsDef, list);
+        else if(list.Name=="nextTile") nextTile = (uint)list.GetInt(0);
       }
       basePath = path;
       tempPath = false;
@@ -286,26 +287,29 @@ class World : IDisposable
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    FSFile outfile = fsFile==null || directory!=basePath ? new FSFile(directory+"_images.fsf") : fsFile;
+    if(File.Exists(path+"_images.fsf")) File.Delete(path+"_images.fsf");
+    FSFile outfile = fsFile==null || path!=basePath ? new FSFile(path+"_images.fsf") : fsFile;
 
     Color backColor = BackColor;
     StreamWriter writer = new StreamWriter(path+"_definition");
     writer.WriteLine("(smarm-world");
-    writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
+    writer.WriteLine("  (nextTile {0})", nextTile);
     options.Save(writer);
-    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, fsFile, i, false);
+    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, outfile, i, false);
     foreach(Polygon poly in polygons) poly.Save(writer);
     writer.Write(')');
     writer.Close();
     changed = false;
     
     if(fsFile!=outfile)
-    { if(fsFile!=null) fsFile.Dispose();
-      outfile.Dispose();
+    { if(fsFile!=null) fsFile.Abandon();
+      outfile.Close();
       if(File.Exists(path+"images.fsf")) File.Delete(path+"images.fsf");
       File.Move(path+"_images.fsf", path+"images.fsf");
       outfile = new FSFile(path+"images.fsf");
     }
+    else outfile.Save();
+
     if(File.Exists(path+"definition")) File.Delete(path+"definition");
     File.Move(path+"_definition", path+"definition");
 
@@ -315,7 +319,7 @@ class World : IDisposable
   }
   
   void Clear(bool disposing)
-  { if(fsFile!=null) { fsFile.Close(); fsFile=null; }
+  { if(fsFile!=null) { fsFile.Abandon(); fsFile=null; }
     if(tempPath) Directory.Delete(basePath, true);
 
     if(!disposing)
@@ -356,14 +360,14 @@ class World : IDisposable
       }
   }
 
-  internal int NextTile { get { return nextTile++; } }
+  internal uint NextTile { get { return nextTile++; } }
   internal FSFile fsFile;
   internal string basePath;
 
   ArrayList polygons = new ArrayList();
   Layer[] layers;
   Object options;
-  int nextTile;
+  uint nextTile;
   bool changed, tempPath;
 
   static ObjectDef optionsDef = new ObjectDef(new List(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(

@@ -17,6 +17,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 // TODO: make shift-click align object with the last object placed
+// TODO: shift-click on a polygon should add it to the selection... just plain click should make it the only one selected
 using System;
 using System.Collections;
 using System.Drawing;
@@ -788,7 +789,7 @@ class WorldDisplay : Control
     }
 
     if(e.OnlyPressed(MouseButton.Left)) subMode = SubMode.DragRectangle;
-    else if(!e.OnlyPressed(MouseButton.Right)) e.Cancel=true;
+    else if(!e.Pressed(MouseButton.Right)) e.Cancel=true;
 
     done:
     base.OnDragStart(e);
