@@ -79,7 +79,7 @@ class App
   }
 
   static bool EventProc(Event e)
-  { if(desktop.ProcessEvent(e) != FilterAction.Drop)
+  { if(!desktop.ProcessEvent(e))
     { if(e is RepaintEvent) Video.Flip();
       else if(e is ResizeEvent)
       { ResizeEvent re = (ResizeEvent)e;
@@ -118,9 +118,8 @@ class App
 
   static void SetMode(int width, int height)
   { Video.SetMode(width, height, 32, fullscreen ? SurfaceFlag.Fullscreen : SurfaceFlag.Resizeable);
-    desktop.Surface = Video.DisplaySurface;
     desktop.Bounds  = Video.DisplaySurface.Bounds;
-    desktop.Invalidate();
+    desktop.Surface = Video.DisplaySurface;
   }
 
   static void Init()
