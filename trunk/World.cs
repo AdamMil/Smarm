@@ -234,7 +234,7 @@ class World : IDisposable
           try { n = int.Parse(layer.Name.Substring(6)); }
           catch { codec.SkipLayer(); continue; }
 
-          codec.ReadNextLayer();
+          codec.ReadLayer();
           if(layer.Surface!=null)
           { surface.Fill(0);
             layer.Surface.UsingAlpha = false;
