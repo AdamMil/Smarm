@@ -25,7 +25,6 @@ using System.IO;
 using GameLib.Collections;
 using GameLib.IO;
 using GameLib.Video;
-using ICSharpCode.SharpZipLib.Zip;
 
 namespace Smarm
 {
@@ -153,15 +152,15 @@ class Layer : IDisposable
         }
   }
 
-  public void Save(string path, System.IO.TextWriter writer, ZipOutputStream zip, int layerNum, bool compile)
-  { if(compile) Save(path, writer, zip, true, layerNum, 0, ZoomMode.Normal);
+  public void Save(string path, System.IO.TextWriter writer, FSFile fsfile, int layerNum, bool compile)
+  { if(compile) Save(path, writer, fsfile, true, layerNum, 0, ZoomMode.Normal);
     else
     { int imgNum=0;
       writer.WriteLine("  (layer {0}", layerNum);
       writer.WriteLine("    (tiles");
-      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Full);
-      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Normal);
-      imgNum = Save(path, writer, zip, false, layerNum, imgNum, ZoomMode.Tiny);
+      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Full);
+      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Normal);
+      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Tiny);
       writer.WriteLine("    )");
     }
 
@@ -326,13 +325,11 @@ class Layer : IDisposable
     }
   }
 
-  // given a filename, load a surface, looking first in the directory and then in the zip file
+  // given a filename, load a surface, looking first in the directory and then in the FSFile
   Surface LoadSurface(string name)
   { if(File.Exists(world.basePath+name)) return new Surface(world.basePath+name, ImageType.PNG);
-    else if(world.zip!=null)
-    { ZipEntry entry = world.zip.GetEntry(name);
-      return new Surface(new MemoryStream(IOH.Read(world.zip.GetInputStream(entry), (int)entry.Size)),
-                         ImageType.PNG, true);
+    else if(world.fsFile!=null)
+    { return new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);
     }
     else throw new ArgumentException("Unable to load surface");
   }
@@ -366,7 +363,7 @@ class Layer : IDisposable
     return array;
   }
   
-  int Save(string path, TextWriter writer, ZipOutputStream zip, bool compile, int layerNum, int imgNum, ZoomMode zoom)
+  int Save(string path, TextWriter writer, FSFile fsfile, bool compile, int layerNum, int imgNum, ZoomMode zoom)
   { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     MemoryStream ms = new MemoryStream(4096);
     for(int x=0; x<surfaces.GetLength(1); x++)
@@ -383,13 +380,14 @@ class Layer : IDisposable
                                         fn, x*PartWidth, y*PartHeight, layerNum);
             else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
                                   fn, x*PartWidth, y*PartHeight, (int)zoom);
-            if(zip==null) cs.Surface.Save(path+fn, ImageType.PNG);
+            if(fsfile==null) cs.Surface.Save(path+fn, ImageType.PNG);
             else
             { ms.Position = 0;
               ms.SetLength(0);
               cs.Surface.Save(ms, ImageType.PNG);
-              zip.PutNextEntry(new ZipEntry(fn));
-              IOH.CopyStream(ms, zip, true);
+              Stream stream = fsfile.AddFile(fn, (int)ms.Length);
+              IOH.CopyStream(ms, stream, true);
+              stream.Close();
             }
             
             if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);

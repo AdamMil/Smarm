@@ -21,7 +21,6 @@ using System.Collections;
 using System.Drawing;
 using System.IO;
 using GameLib.Video;
-using ICSharpCode.SharpZipLib.Zip;
 
 namespace Smarm
 {
@@ -244,7 +243,7 @@ class World : IDisposable
 
     try
     { Clear();
-      zip = new ZipFile(path+"images.zip");
+      fsFile = File.Exists(path+"images.fsf") ? new FSFile(path+"images.fsf") : null;
       List level = new List(fs);
       foreach(List list in level)
       { if(list.Name=="layer")
@@ -287,35 +286,36 @@ class World : IDisposable
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    ZipOutputStream zip = new ZipOutputStream(File.Open(path+"_images.zip", FileMode.Create));
-    zip.SetLevel(0);
+    FSFile outfile = fsFile==null || directory!=basePath ? new FSFile(directory+"_images.fsf") : fsFile;
 
     Color backColor = BackColor;
     StreamWriter writer = new StreamWriter(path+"_definition");
     writer.WriteLine("(smarm-world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
     options.Save(writer);
-    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, zip, i, false);
+    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, fsFile, i, false);
     foreach(Polygon poly in polygons) poly.Save(writer);
     writer.Write(')');
     writer.Close();
-    zip.Finish();
-    zip.Close();
     changed = false;
     
-    if(this.zip!=null) this.zip.Close();
-    foreach(string fn in new string[] { "images.zip", "definition" })
-    { if(File.Exists(path+fn)) File.Delete(path+fn);
-      File.Move(path+'_'+fn, path+fn);
+    if(fsFile!=outfile)
+    { if(fsFile!=null) fsFile.Dispose();
+      outfile.Dispose();
+      if(File.Exists(path+"images.fsf")) File.Delete(path+"images.fsf");
+      File.Move(path+"_images.fsf", path+"images.fsf");
+      outfile = new FSFile(path+"images.fsf");
     }
+    if(File.Exists(path+"definition")) File.Delete(path+"definition");
+    File.Move(path+"_definition", path+"definition");
 
-    this.zip = new ZipFile(path+"images.zip");
+    fsFile = outfile;
     basePath = path;
     tempPath = false;
   }
   
   void Clear(bool disposing)
-  { if(zip!=null) { zip.Close(); zip=null; }
+  { if(fsFile!=null) { fsFile.Close(); fsFile=null; }
     if(tempPath) Directory.Delete(basePath, true);
 
     if(!disposing)
@@ -357,7 +357,7 @@ class World : IDisposable
   }
 
   internal int NextTile { get { return nextTile++; } }
-  internal ZipFile zip;
+  internal FSFile fsFile;
   internal string basePath;
 
   ArrayList polygons = new ArrayList();
