@@ -42,65 +42,94 @@ class Layer : IDisposable
 
   public const int PartWidth=128, PartHeight=64;
 
-  public int Width  { get { return width*PartWidth;   } }
-  public int Height { get { return height*PartHeight; } }
+  public int Width  { get { return width*PartWidth;   } } // width in full-pixels
+  public int Height { get { return height*PartHeight; } } // height in full-pixels
   public IList Objects { get { return objects; } }
 
   public void Clear()
   { objects = new ArrayList();
-    if(mru!=null) foreach(CachedSurface cs in mru) cs.Surface.Dispose();
+    if(mru!=null)
+    { Clear(full);
+      Clear(fourth);
+      Clear(sixteenth);
+    }
     surfaces = new Hashtable();
     mru = new LinkedList();
-    full = new string[32, 64];
-    fourth = new string[8, 16];
-    sixteenth = new string[2, 4];
+    full = new string[32, 32];
+    fourth = new string[8, 8];
+    sixteenth = new string[2, 2];
     width = height = 0;
   }
 
-  public void InsertSurface(Surface s, int x, int y)
-  { InsertSurface(s, x, y, ZoomMode.Full, true);
-    SyncScaledSizes();
+  public void InsertSurface(Surface s, int fx, int fy)
+  { InsertSurface(s, fx, fy, ZoomMode.Full, true);
+    SyncScaledSizes(); // if the insertion enlarged the world size, enlarge the scaled arrays to match
   }
 
-  public void Render(Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
+  /* render the world starting at full-coord fx,fy into dest's drect using the zoom level specified */
+  public void Render(Surface dest, int fx, int fy, Rectangle drect, ZoomMode zoom,
                      bool renderObjects, Object hilite, bool blend)
-  { sx /= (int)zoom; sy /= (int)zoom;
-    int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight, width=(this.width+(int)zoom-1)/(int)zoom, height=(this.height+(int)zoom-1)/(int)zoom;
-    sx %= PartWidth; sy %= PartHeight;
+  { fx /= (int)zoom; fy /= (int)zoom; // convert to zoomed coordinates
+    int ozx=fx, ozy=fy, bx=fx/PartWidth, by=fy/PartHeight, bw=(width+(int)zoom-1)/(int)zoom, bh=(height+(int)zoom-1)/(int)zoom;
+    fx %= PartWidth; fy %= PartHeight; // fx,fy become the offset into the first block
+    // ozx,ozy hold the old zoom coordinates. bx,by are the index of the starting block.
+    // bw,bh are the width/height of the array we'll be using
 
     string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
 
     for(int xi=0, dx=drect.X; dx<=drect.Right; xi++)
-    { if(bx+xi>=width) break;
+    { if(bx+xi>=bw) break;
       if(bx+xi>=0)
         for(int yi=0, dy=drect.Y; dy<=drect.Bottom; yi++)
-        { if(by+yi>=height) break;
+        { if(by+yi>=bh) break;
           if(by+yi>=0)
           { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
+            // if the surface is null and we're not at full zoom level, try to get it by scaling another zoom level
+            // down to our zoom level
             if(cs==null && zoom!=ZoomMode.Full)
             { ScaleDown(bx+xi, by+yi, zoom);
               cs = GetSurface(surfaces, bx+xi, by+yi);
             }
             if(cs!=null)
-            { Point sloc = new Point(xi==0 ? sx : 0, yi==0 ? sy : 0);
+            { Point sloc = new Point(xi==0 ? fx : 0, yi==0 ? fy : 0);
               Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
                                               Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
-              cs.Surface.UsingAlpha = blend;
+              cs.Surface.UsingAlpha = blend; // if 'blend', do alpha blending. otherwise, copy the alpha information
               cs.Surface.Blit(dest, srect, dx, dy);
               cs.Surface.UsingAlpha = true;
             }
           }
-          dy += yi==0 ? PartHeight-sy : PartHeight;
+          dy += yi==0 ? PartHeight-fy : PartHeight;
         }
-      dx += xi==0 ? PartWidth-sx : PartWidth;
+      dx += xi==0 ? PartWidth-fx : PartWidth;
     }
     
-    if(zoom==ZoomMode.Normal && renderObjects)
+    if(renderObjects) RenderObjects(dest, ozx, ozy, drect, zoom, hilite);
+  }
+
+  public void RenderObjects(Surface dest, int zx, int zy, Rectangle drect, ZoomMode zoom, Object hilite)
+  { RenderObjects(dest, zx, zy, drect, zoom, hilite, App.Desktop.Font);
+  }
+
+  public void RenderObjects(Surface dest, int zx, int zy, Rectangle drect, ZoomMode zoom,
+                            Object hilite, GameLib.Fonts.Font font)
+  { if(zoom==ZoomMode.Normal)
       foreach(Object o in objects)
       { Rectangle bounds = o.Bounds;
-        bounds.Offset(drect.X-osx, drect.Y-osy);
+        bounds.Offset(drect.X-zx, drect.Y-zy);
         if(bounds.IntersectsWith(drect)) o.Blit(dest, bounds.X, bounds.Y, o==hilite);
       }
+    else
+      foreach(Object obj in objects)
+        { Rectangle r = obj.Bounds;
+          if(zoom==ZoomMode.Full) { r.X *= 4; r.Y *= 4; r.Width *= 4; r.Height *= 4; }
+          else { r.X /= 4; r.Y /= 4; r.Width /= 4; r.Height /= 4; }
+          r.Offset(drect.X-zx, drect.Y-zy);
+          if(r.IntersectsWith(drect))
+          { Primitives.Box(dest, r, Color.White);
+            if(zoom==ZoomMode.Full && font!=null) font.Render(dest, obj.Name, r, ContentAlignment.MiddleCenter);
+          }
+        }
   }
 
   public void Save(string path, System.IO.TextWriter writer, ZipOutputStream zip, int layerNum, bool compile)
@@ -138,12 +167,15 @@ class Layer : IDisposable
             }
             
             if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
+            // update the filename. note that this leaves the array in an invalid state, but we'll fix it below.
+            // we can't fix it now because the new name might conflict with another tile having that name
             cs.Name=fn;
           }
           else RemoveSurface(surfaces, x, y);
         }
       }
 
+    // fix up the filenames
     for(int x=0; x<surfaces.GetLength(1); x++)
       for(int y=0; y<surfaces.GetLength(0); y++)
       { CachedSurface cs = GetSurface(surfaces, x, y);
@@ -168,47 +200,51 @@ class Layer : IDisposable
     if(!compile) writer.WriteLine("  )");
   }
 
-  public void Shift(int xo, int yo)
+  // offsets are in world pixels and guaranteed to be a multiple of the partsize/4 (so it's a multiple of the size
+  // of a full block in world pixels)
+  public void Shift(int wxo, int wyo)
   { foreach(Object obj in objects)
     { Point p = obj.Location;
-      p.Offset(xo, yo);
+      p.Offset(wxo, wyo);
       obj.Location = p;
     }
 
     if(width==0) return;
-    full = Shift(full, xo*4/PartWidth, yo*4/PartHeight, width, height);
-    if(xo%PartWidth==0 && yo%PartHeight==0)
-    { fourth = Shift(fourth, xo/PartWidth, yo/PartHeight, width/4, height/4);
-      if(xo%(PartWidth*4)==0 && yo%(PartHeight*4)==0)
-        sixteenth = Shift(sixteenth, xo/4/PartWidth, yo/4/PartHeight, width/16, height/16);
-      else Clear(sixteenth);
+    full = Shift(full, wxo*4/PartWidth, wyo*4/PartHeight, width, height);
+
+    if(wxo%PartWidth==0 && wyo%PartHeight==0) // if it's a multiple of the world-blocks, shift those too
+    { fourth = Shift(fourth, wxo/PartWidth, wyo/PartHeight, width/4, height/4);
+      if(wxo%(PartWidth*4)==0 && wyo%(PartHeight*4)==0) // if it's a multiple of the tiny-blocks, shift them
+        sixteenth = Shift(sixteenth, wxo/4/PartWidth, wyo/4/PartHeight, width/16, height/16);
+      else Clear(sixteenth); // otherwise drop the tiny-tiles
     }
-    else { Clear(fourth); Clear(sixteenth);  }
+    else { Clear(fourth); Clear(sixteenth);  } // otherwise just drop all the zoomed tiles
     
-    width  += xo*4/PartWidth;
-    height += yo*4/PartHeight;
-    SyncScaledSizes();
+    width  += wxo*4/PartWidth;  // update the width
+    height += wyo*4/PartHeight;
+    SyncScaledSizes();          // and the scaled widths, too
   }
 
-  void Clear(string[,] array)
+  void Clear(string[,] array) // remove all surfaces in an array
   { int w=array.GetLength(1), h=array.GetLength(0);
-    for(int y=0; y<h; y++) for(int x=0; x<w; x++) if(array[y,x]!=null) RemoveSurface(array, x, y);
+    for(int y=0; y<h; y++) for(int x=0; x<w; x++) RemoveSurface(array, x, y);
   }
 
-  void Clear(string[,] array, int x, int y, int w, int h)
-  { int bx=x/PartWidth, by=y/PartHeight, bw=(w+PartWidth-1)/PartWidth, bh=(h+PartHeight-1)/PartHeight;
-    bw = Math.Min(bx+bw, array.GetLength(1))-bx; bh = Math.Min(by+bh, array.GetLength(0))-by;
-    for(int yi=0; yi<bh; yi++)
-      for(int xi=0; xi<bw; xi++) if(array[by+yi,bx+xi]!=null) RemoveSurface(array, bx+xi, by+yi);
+  // remove a rectangle of surfaces in an array
+  void Clear(string[,] array, int zx, int zy, int zw, int zh)
+  { int bx=zx/PartWidth, by=zy/PartHeight, bw=(zw+PartWidth-1)/PartWidth, bh=(zh+PartHeight-1)/PartHeight;
+    bw = Math.Min(bw, array.GetLength(1)-bx); bh = Math.Min(bh, array.GetLength(0)-by);
+    for(int yi=0; yi<bh; yi++) for(int xi=0; xi<bw; xi++) RemoveSurface(array, bx+xi, by+yi);
   }
 
+  // return a cachedsurface for the given array element, loading it first if necessary
   CachedSurface GetSurface(string[,] array, int x, int y)
   { string name = array[y, x];
     if(name==null) return null;
 
     CachedSurface cs;
     LinkedList.Node node = (LinkedList.Node)surfaces[name];
-    if(node!=null)
+    if(node!=null) // if found, move it to the front of the MRU list
     { mru.Remove(node);
       mru.Prepend(node);
       cs = (CachedSurface)node.Data;
@@ -222,6 +258,7 @@ class Layer : IDisposable
     return cs;
   }
   
+  // insert a surface name into the full-sized array (used during level loading)
   void InsertSurface(string name, Point pos)
   { int x=pos.X/PartWidth, y=pos.Y/PartHeight;
     full = ResizeTo(full, x, y);
@@ -230,11 +267,13 @@ class Layer : IDisposable
     if(y+1>height) height=y+1;
   }
 
-  void InsertSurface(Surface s, int x, int y, ZoomMode zoom, bool checkEmpty)
+  // insert a surface into a zoom level, chopping it up as appropriate
+  void InsertSurface(Surface s, int zx, int zy, ZoomMode zoom, bool checkEmpty)
   { s = s.CloneDisplay();
-    int ox=x, oy=y;
-    int bx=x/PartWidth, by=y/PartHeight, bw=(s.Width+PartWidth-1)/PartWidth, bh=(s.Height+PartHeight-1)/PartHeight;
-    x %= PartWidth; y %= PartHeight;
+    int ozx=zx, ozy=zy, bx=zx/PartWidth, by=zy/PartHeight;
+    zx %= PartWidth; zy %= PartHeight;
+    int bw=(zx+s.Width+PartWidth-1)/PartWidth, bh=(zy+s.Height+PartHeight-1)/PartHeight;
+    // ozx,ozy = original zoom coords. zx,zy = offset into first block. bw,bh = number of affected blocks
 
     string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth), narr;
     narr = ResizeTo(surfaces, bx+bw, by+bh);
@@ -254,7 +293,7 @@ class Layer : IDisposable
           width  = Math.Max(width,  bx+xi+1);
           height = Math.Max(height, by+yi+1);
         }
-        Point dpt = new Point(xi==0 ? x : 0, yi==0 ? y : 0);
+        Point dpt = new Point(xi==0 ? zx : 0, yi==0 ? zy : 0);
         Rectangle srect = new Rectangle(sx, sy, Math.Min(PartWidth-dpt.X, s.Width-xi*PartWidth),
                                         Math.Min(PartHeight-dpt.Y, s.Height-yi*PartHeight));
         s.Blit(cs.Surface, srect, dpt);
@@ -264,17 +303,17 @@ class Layer : IDisposable
 
         sy += srect.Height;
       }
-      sx += xi==0 ? PartWidth-x : PartWidth;
+      sx += xi==0 ? PartWidth-zx : PartWidth;
     }
     
-    if(s.Width>1 && s.Height>1)
-      if(zoom==ZoomMode.Full)
-      { Clear(fourth, ox/4, oy/4, s.Width, s.Height);
-        Clear(sixteenth, ox/16, oy/16, s.Width, s.Height);
-      }
+    // FIXME: if the surface has area (shouldn't it always?!), clear the affected scaled blocks
+    if(s.Width>1 && s.Height>1 && zoom==ZoomMode.Full)
+    { Clear(fourth, ozx/4, ozy/4, s.Width, s.Height);
+      Clear(sixteenth, ozx/16, ozy/16, s.Width, s.Height);
+    }
   }
 
-  bool IsEmpty(Surface s)
+  bool IsEmpty(Surface s) // return true if a surface contains only transparent pixels
   { // first check diagonally
     int len = Math.Min(s.Width, s.Height);
     s.Lock();
@@ -303,6 +342,7 @@ class Layer : IDisposable
     }
   }
 
+  // given a filename, load a surface, looking first in the directory and then in the zip file
   Surface LoadSurface(string name)
   { if(File.Exists(world.basePath+name)) return new Surface(world.basePath+name, ImageType.PNG);
     else if(world.zip!=null)
@@ -313,18 +353,23 @@ class Layer : IDisposable
     else throw new ArgumentException("Unable to load surface");
   }
 
+  // remove a surface and delete it from the disk if it's been swapped out
   void RemoveSurface(string[,] array, int x, int y)
   { string name = array[y, x];
+    if(name==null) return;
     LinkedList.Node node = (LinkedList.Node)surfaces[name];
     CachedSurface cs = node==null ? null : (CachedSurface)node.Data;
     if(cs!=null)
-    { mru.Remove(node);
+    { cs.Surface.Dispose();
+      mru.Remove(node);
       surfaces.Remove(name);
     }
     if(File.Exists(world.basePath+name)) File.Delete(world.basePath+name);
     array[y, x] = null;
   }
 
+  // resize the array to at least widthxheight and return the new array.
+  // if no resizing is needed, the old array is returned.
   string[,] ResizeTo(string[,] array, int width, int height)
   { int owidth = array.GetLength(1), oheight = array.GetLength(0);
     if(width>owidth || height>oheight)
@@ -337,26 +382,31 @@ class Layer : IDisposable
     return array;
   }
   
-  // FIXME: make this properly handle edge pixels
+  // take an image and return a copy in the same format, but scaled down to 1/16th the size (1/4th on each axis)
   Surface ScaleDown(Surface s)
   { Surface ret = new Surface((s.Width+2)/4, (s.Height+2)/4, s.Format);
     s.Lock(); ret.Lock();
     for(int y=0; y<ret.Height; y++)
       for(int x=0; x<ret.Width; x++)
-      { int a=0, r=0, g=0, b=0, n=0, nh;
+      { int a=0, r=0, g=0, b=0, n=0, ah;
         for(int osx=x*4,sxe=Math.Min(osx+4, s.Width),sy=y*4,sye=Math.Min(sy+4, s.Height); sy<sye; sy++)
           for(int sx=osx; sx<sxe; n++,sx++)
           { Color c = s.GetPixel(sx, sy);
-            a+=c.A; r+=c.R; g+=c.G; b+=c.B;
+            a+=c.A; r+=c.R*c.A; g+=c.G*c.A; b+=c.B*c.A;
           }
-        nh=n/2;
-        a=Math.Min(255, (a+nh)/n); r=Math.Min(255, (r+nh)/n); g=Math.Min(255, (g+nh)/n); b=Math.Min(255, (b+nh)/n);
+        if(a!=0)
+        { ah=a/2;
+          r=Math.Min(255, (r+ah)/a); g=Math.Min(255, (g+ah)/a); b=Math.Min(255, (b+ah)/a); 
+        }
+        a=Math.Min(255, (a+n/2)/n);
         ret.PutPixel(x, y, Color.FromArgb(a, r, g, b));
       }
     ret.Unlock(); s.Unlock();
     return ret;
   }
 
+  // given a non-full zoom mode and the index of an empty tile x,y, it attempts to scale down larger tiles
+  // to fill the x,y tile.
   void ScaleDown(int x, int y, ZoomMode zoom)
   { int zs=(int)zoom/4;
     int pw=(width+zs-1)/zs, ph=(height+zs-1)/zs;
@@ -378,8 +428,11 @@ class Layer : IDisposable
       }
   }
     
+  // given the index of an empty tile, it creates an empty surface with a new name and fills that space
+  // the surface should then be filled with valid data
   CachedSurface SetSurface(string[,] array, int x, int y)
-  { string name = "layer" + world.NextTile + ".png";
+  { if(array[y, x]!=null) throw new InvalidOperationException("Tile is not null!");
+    string name = "layer" + world.NextTile + ".png";
     array[y, x] = name;
 
     CachedSurface cs = new CachedSurface(name);
@@ -390,6 +443,7 @@ class Layer : IDisposable
     return cs;
   }
 
+  // shift an array over by x,y tiles. width,height are the width,heigth of the array's existing data
   string[,] Shift(string[,] array, int xo, int yo, int width, int height)
   { string[,] narr;
     int nw=width+xo, nh=height+yo;
@@ -405,13 +459,15 @@ class Layer : IDisposable
     return narr;
   }
 
+  // make sure the scaled-down arrays are big enough to hold the full image
   void SyncScaledSizes()
   { fourth = ResizeTo(fourth, (width+3)/4, (height+3)/4);
     sixteenth = ResizeTo(sixteenth, (width+15)/16, (height+15)/16);
   }
 
+  // unload least recently used tiles from memory, saving them to disk if they've been changed
   void UnloadOldTiles()
-  { if(mru.Count>App.MaxTiles)
+  { while(mru.Count>App.MaxTiles)
     { CachedSurface old = (CachedSurface)mru.Tail.Data;
       surfaces.Remove(old.Name);
       mru.Remove(mru.Tail);
@@ -419,6 +475,7 @@ class Layer : IDisposable
       if(old.Changed)
       { old.Surface.Save(world.basePath+old.Name, ImageType.PNG);
         old.Surface.Dispose();
+        old.Changed = false; // the on-disk version is now up to date
       }
     }
   }

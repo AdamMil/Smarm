@@ -26,6 +26,8 @@ using GameLib.Video;
 namespace Smarm
 {
 
+class SmarmQuitEvent : UserEvent { }
+
 class App
 { private App() { }
   static App() { Init(); }
@@ -83,7 +85,8 @@ class App
         SetMode(re.Width, re.Height);
       }
       else if(e is ExceptionEvent) throw ((ExceptionEvent)e).Exception;
-      else if(e is QuitEvent) return false;
+      else if(e is QuitEvent) App.Desktop.TopBar.Exit(); // no encapsulation, blah
+      else if(e is SmarmQuitEvent) return false;
     }
     else if(desktop.Updated)
     { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
@@ -93,7 +96,9 @@ class App
   }
 
   static void Main()
-  { WM.WindowTitle = "Smarm "+Version;
+  { PSDImage image = PSDCodec.ReadPSD("c:/smarm0.psd");
+
+    WM.WindowTitle = "Smarm "+Version;
     desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
     desktop.World.Clear(); // start a new level
     PropertiesUpdated();
