@@ -297,6 +297,15 @@ class Polygon
 { public Polygon(string type) { points = new Point[0]; Type=type; }
   public Polygon(List list) { Load(list); }
   
+  public int Area
+  { get
+    { int i,area=0;
+      for(i=0; i<points.Length-1; i++) area += points[i].X*points[i+1].Y - points[i+1].X*points[i].Y;
+      area += points[i].X*points[0].Y - points[0].X*points[i].Y;
+      return Math.Abs(area/2);
+    }
+  }
+
   public Rectangle Bounds
   { get
     { if(points.Length==0) return new Rectangle();
@@ -308,6 +317,22 @@ class Polygon
         if(pt.Y>bottom) bottom = pt.Y;
       }
       return new Rectangle(left, top, right-left+1, bottom-top+1);
+    }
+  }
+
+  public Point Centroid
+  { get
+    { int area=0,x=0,y=0;
+      for(int i=0,j,d; i<points.Length; i++)
+      { j = i+1==points.Length ? 0 : i+1;
+        d = points[i].X*points[j].Y - points[j].X*points[i].Y;
+        x += (points[i].X+points[j].X)*d;
+        y += (points[i].Y+points[j].Y)*d;
+        area += d;
+      }
+      if(area<0) { area=-area; x=-x; y=-y; }
+      area *= 3;
+      return new Point(x/area, y/area);
     }
   }
 
@@ -328,6 +353,12 @@ class Polygon
     Array.Copy(points, narr, points.Length);
     narr[points.Length] = pt;
     points = narr;
+  }
+
+  public GameLib.Mathematics.TwoD.Polygon ToGLPolygon()
+  { GameLib.Mathematics.TwoD.Polygon ret = new GameLib.Mathematics.TwoD.Polygon();
+    foreach(Point pt in points) ret.AddPoint(pt);
+    return ret;
   }
 
   public void RemoveLastPoint()

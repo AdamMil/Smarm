@@ -31,7 +31,7 @@ namespace Smarm
 #region MenuLabel
 class MenuLabel : Label
 { public MenuLabel() { Style |= ControlStyle.Clickable; TextPadding=1; }
-  
+
   public MenuBase Menu { get { return menu; } set { menu=value; } }
 
   protected override void OnMouseEnter(EventArgs e) { over=true;  Invalidate(); }
@@ -74,6 +74,7 @@ class TopBar : ContainerControl
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
     menu.Add(new MenuItem("Edit in paint program", 'E', new KeyCombo(Key.F5))).Click += new EventHandler(editRect_OnClick);
+    menu.Add(new MenuItem("Move rectangle", 'M', new KeyCombo(Key.F8))).Click += new EventHandler(moveRect_OnClick);
     menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L')).Click += new EventHandler(levelProps_OnClick);
     menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
@@ -214,6 +215,7 @@ class TopBar : ContainerControl
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
+  void moveRect_OnClick(object sender, EventArgs e) { App.Desktop.World.MoveRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
   void levelProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowLevelProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
@@ -437,9 +439,7 @@ class WorldDisplay : Control
   }
 
   public void EditRect()
-  { bool dontQuit=false;
-
-    if(!SelectRectangle("export")) goto abort;
+  { if(!SelectRectangle("export")) goto abort;
 
     App.Desktop.StatusText = "Waiting for edit to complete...";
     try
@@ -467,7 +467,7 @@ class WorldDisplay : Control
     return;
 
     abort:
-    if(dontQuit) App.Desktop.StatusText = "Edit process aborted.";
+    App.Desktop.StatusText = "Edit process aborted.";
   }
 
   public void Load(string directory)
@@ -486,9 +486,41 @@ class WorldDisplay : Control
     }
   }
 
+  public void MoveRect()
+  { if(!SelectRectangle("move")) goto abort;
+    App.Desktop.StatusText = "Move the rectangle into position and left-click...";
+
+    Rectangle rect = world.ExpandRect(WindowToWorld(selected.Rect));
+    InvalidateObjs();
+    InvalidatePolys();
+    selected.Clear();
+    
+    { bool dontQuit=true;
+      Rectangle wrect = rect;
+      if(wrect.X<0) wrect.X=0;
+      if(wrect.Y<0) wrect.Y=0;
+      Size size = WorldToWindow(wrect).Size;
+
+      dragImage = new Surface(size.Width, size.Height, 32);
+      world.Render(dragImage, wrect.X*4, wrect.Y*4, dragImage.Bounds, zoom, World.AllLayers, null);
+      while(dragImage!=null && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(!dontQuit) goto abort;
+    }
+    
+    world.MoveRect(rect, selected.Rect.Location.X-rect.X, selected.Rect.Location.Y-rect.Y);
+    App.Desktop.StatusText = "Move completed.";
+    return;
+
+    abort:
+    App.Desktop.StatusText = "Move process aborted.";
+  }
+
   public void Save(string directory, bool compile)
   { try
-    { if(compile) world.Compile(directory);
+    { if(compile)
+      { world.Compile(directory);
+        if(App.CompilePost!="") System.Diagnostics.Process.Start(App.CompilePost, "\""+directory+'\"').WaitForExit();
+      }
       else world.Save(directory);
     }
     catch(Exception e)
@@ -557,14 +589,17 @@ class WorldDisplay : Control
     }
     
     if(subMode==SubMode.DragRectangle) Primitives.Box(e.Surface, selected.Rect, Color.FromArgb(0, 255, 0));
+    if(dragImage!=null)
+      dragImage.Blit(e.Surface, WorldToWindow(world.ExpandRect(new Rectangle(mousePoint, new Size())).Location));
   }
   #endregion
 
   #region Other events
   protected override void OnMouseMove(GameLib.Events.MouseMoveEvent e)
   { if(!Focused) Focus();
-    Point pt = WindowToWorld(e.Point);
-    App.Desktop.TopBar.MouseText = pt.X.ToString()+'x'+pt.Y.ToString();
+    mousePoint = WindowToWorld(e.Point);
+    App.Desktop.TopBar.MouseText = mousePoint.X.ToString()+'x'+mousePoint.Y.ToString();
+    if(dragImage!=null) Invalidate();
     base.OnMouseMove(e);
   }
   
@@ -584,14 +619,20 @@ class WorldDisplay : Control
   }
 
   protected override void OnMouseClick(ClickEventArgs e)
-  { if(subMode==SubMode.DragRectangle || selectMode!=SelectMode.None)
-    {
+  { if(dragImage!=null && e.CE.Button==MouseButton.Left)
+    { selected.Rect.Location = WindowToWorld(e.CE.Point);
+      dragImage.Dispose();
+      dragImage = null;
+      e.Handled = true;
+    }
+    else if(subMode==SubMode.DragRectangle || selectMode!=SelectMode.None)
+    { // do nothing (but prevent the other if blocks from executing)
     }
     else if(editMode==EditMode.Polygons)
     { if(e.CE.Button==MouseButton.Left)
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(subMode==SubMode.None)
-        { if(Keyboard.HasOnlyKeys(KeyMod.Ctrl) || !ClickPolygon(e.CE.Point, false))
+        { if(Keyboard.HasOnlyKeys(KeyMod.Ctrl) || !ClickPolygon(e.CE.Point))
           { InvalidatePolys();
             selected.Poly = new Polygon(SelectedType);
             world.Polygons.Add(selected.Poly);
@@ -727,9 +768,10 @@ class WorldDisplay : Control
   }
 
   protected override void OnDragStart(DragEventArgs e)
-  { if(editMode==EditMode.Polygons)
+  { Point pt = WindowToWorld(e.Start);
+    if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
-      { if(e.Pressed(MouseButton.Left) && ClickVertex(WindowToWorld(e.Start), true))
+      { if(e.Pressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt)))
         { oldSubMode=subMode;
           subMode=SubMode.DragSelected;
           goto done;
@@ -740,9 +782,9 @@ class WorldDisplay : Control
         }
       }
     }
-    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.Pressed(MouseButton.Left) &&
-            ClickObject(WindowToWorld(e.Start)))
-    { subMode=SubMode.DragSelected; goto done;
+    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.Pressed(MouseButton.Left) && ClickObject(pt))
+    { subMode=SubMode.DragSelected;
+      goto done;
     }
 
     if(e.Pressed(MouseButton.Left)) subMode = SubMode.DragRectangle;
@@ -756,7 +798,7 @@ class WorldDisplay : Control
   { if(e.Pressed(MouseButton.Right)) DragScroll(e);
     else if(e.Pressed(MouseButton.Left))
     { if(subMode==SubMode.DragSelected)
-      { if(editMode==EditMode.Polygons) DragPoint(e);
+      { if(editMode==EditMode.Polygons) DragPoly(e);
         else if(editMode==EditMode.Objects) DragObject(e);
       }
       else if(subMode==SubMode.DragRectangle) DragRect(e);
@@ -768,7 +810,7 @@ class WorldDisplay : Control
   { if(e.Pressed(MouseButton.Right)) DragScroll(e);
     else if(e.Pressed(MouseButton.Left))
     { if(subMode==SubMode.DragSelected)
-      { if(editMode==EditMode.Polygons) { DragPoint(e); subMode=oldSubMode; }
+      { if(editMode==EditMode.Polygons) { DragPoly(e); subMode=oldSubMode; }
         else
         { if(editMode==EditMode.Objects) DragObject(e);
           subMode = SubMode.None;
@@ -778,7 +820,9 @@ class WorldDisplay : Control
       { selected.Rect = e.Rectangle;
         subMode = SubMode.None;
         if(selectMode==SelectMode.None)
-        { // TODO: do something with the rectangle
+        { selected.Rect = WindowToWorld(selected.Rect);
+          if(editMode==EditMode.Objects) SelectObjects(selected.Rect, layer);
+          else if(editMode==EditMode.Polygons) SelectPolygons(selected.Rect);
         }
         else selectMode = SelectMode.Done;
         Invalidate();
@@ -840,15 +884,15 @@ class WorldDisplay : Control
   }
 
   #region Private methods
-  bool ClickVertex(Point pt, bool deselectOthers)
-  { pt = WorldToWindow(pt);
+  bool ClickVertex(Point point)
+  { point = WorldToWindow(point);
     foreach(Polygon poly in world.Polygons)
       for(int i=0; i<poly.Points.Length; i++)
       { Point p = WorldToWindow(poly.Points[i]);
-        int xd=p.X-pt.X, yd=p.Y-pt.Y;
+        int xd=p.X-point.X, yd=p.Y-point.Y;
         if(xd*xd+yd*yd<=32)
-        { if(deselectOthers) selected.Poly=poly;
-          else if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
+        { InvalidatePolys();
+          selected.Poly = poly;
           selectedPoint = i;
           Invalidate(poly);
           return true;
@@ -857,9 +901,9 @@ class WorldDisplay : Control
     return false;
   }
 
-  bool ClickObject(Point pt)
+  bool ClickObject(Point point)
   { foreach(Object obj in world.Layers[layer].Objects)
-      if(obj.Bounds.Contains(pt))
+      if(obj.Bounds.Contains(point))
       { if(!selected.Objs.Contains(obj))
         { selected.Objs.Add(obj);
           Invalidate(obj);
@@ -869,22 +913,20 @@ class WorldDisplay : Control
     return false;
   }
 
-  bool ClickPolygon(Point point, bool deselectOthers)
-  { if(ClickVertex(point, deselectOthers)) return true;
+  bool ClickPolygon(Point point)
+  { if(ClickVertex(point)) return true;
+    selectedPoint = -1;
     foreach(Polygon poly in world.Polygons)
       if(poly.Points.Length>2 && poly.Bounds.Contains(point))
-      { GameLib.Mathematics.TwoD.Polygon glPoly = new GameLib.Mathematics.TwoD.Polygon(poly.Points.Length);
-        foreach(Point pt in poly.Points) glPoly.AddPoint(pt);
-        try
-        { foreach(GameLib.Mathematics.TwoD.Polygon glcvPoly in glPoly.SplitIntoConvexPolygons())
+      { try
+        { foreach(GameLib.Mathematics.TwoD.Polygon glcvPoly in poly.ToGLPolygon().SplitIntoConvexPolygons())
             if(glcvPoly.ConvexContains(point))
-            { if(deselectOthers) selected.Poly = poly;
-              else if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
+            { if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
               Invalidate(poly);
               return true;
             }
         }
-        catch { }
+        catch(Exception e) { MessageBox.Show(Desktop, "Error", e.Message); }
       }
     return false;
   }
@@ -898,15 +940,20 @@ class WorldDisplay : Control
     Invalidate();
   }
   
-  void DragPoint(DragEventArgs e)
+  void DragPoly(DragEventArgs e)
   { int xd=e.End.X-e.Start.X, yd=e.End.Y-e.Start.Y;
     if(zoom==ZoomMode.Full) { xd/=4; yd/=4; }
     else if(zoom==ZoomMode.Tiny) { xd*=4; yd*=4; }
     if(xd!=0 || yd!=0)
-    { Invalidate(selected.Poly);
-      selected.Poly.Points[selectedPoint].X += xd;
-      selected.Poly.Points[selectedPoint].Y += yd;
-      Invalidate(selected.Poly);
+    { InvalidatePolys();
+      if(selectedPoint!=-1)
+      { selected.Poly.Points[selectedPoint].X += xd;
+        selected.Poly.Points[selectedPoint].Y += yd;
+      }
+      else
+        foreach(Polygon poly in selected.Polys)
+          for(int i=0; i<poly.Points.Length; i++) poly.Points[i].Offset(xd, yd);
+      InvalidatePolys();
       if(zoom==ZoomMode.Full) { e.Start.X += xd*4; e.Start.Y += yd*4; }
       else e.Start = e.End;
       world.ChangedSinceSave = true;
@@ -985,6 +1032,19 @@ class WorldDisplay : Control
     }
   }
 
+  void SelectObjects(Rectangle rect)
+  { foreach(Object obj in world.Layers[layer].Objects)
+    { Point pt = obj.Location;
+      pt.Offset(obj.Width/2, obj.Height/2);
+      if(rect.Contains(pt) && !selected.Objs.Contains(obj)) selected.Objs.Add(obj);
+    }
+  }
+
+  void SelectPolygons(Rectangle rect)
+  { foreach(Polygon poly in world.Polygons)
+      if(rect.Contains(poly.Centroid) && !selected.Polys.Contains(poly)) selected.Polys.Add(poly);
+  }
+
   bool SelectRectangle(string action)
   { bool dontQuit=true;
     selectMode = SelectMode.Selecting;
@@ -1034,11 +1094,13 @@ class WorldDisplay : Control
   World world = new World();
   EventHandler typeSel;
   Selection selected = new Selection();
+  Point mousePoint;
   int x, y, layer, selectedPoint;
   EditMode editMode;
   SubMode  subMode, oldSubMode;
   ZoomMode zoom, lastZoom;
   SelectMode selectMode;
+  Surface dragImage;
   bool     showAll, showObjs, showPolys;
 }
 #endregion

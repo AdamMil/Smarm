@@ -87,9 +87,7 @@ class World : IDisposable
     foreach(Polygon poly in polygons)
     { if(poly.Points.Length<3) continue;
       foreach(Point pt in poly.Points) ccPoly.AddPoint(pt);
-      GameLib.Mathematics.TwoD.Polygon[] cvPolys = ccPoly.SplitIntoConvexPolygons();
-      
-      foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in cvPolys)
+      foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in ccPoly.SplitIntoConvexPolygons())
       { if(!cvPoly.IsClockwise()) cvPoly.Reverse();
         Polygon newPoly = new Polygon(poly.Type);
         for(int i=0; i<cvPoly.Length; i++) newPoly.AddPoint(cvPoly[i].ToPoint());
@@ -108,15 +106,20 @@ class World : IDisposable
     GC.SuppressFinalize(this);
   }
 
+  public Rectangle ExpandRect(Rectangle worldRect)
+  { // expand the rectangle dimensions to multiples of the full block size
+    int right = worldRect.Right, bottom = worldRect.Bottom;
+    worldRect.X = Expand(worldRect.X, Layer.PartWidth/4, -1);
+    worldRect.Y = Expand(worldRect.Y, Layer.PartHeight/4, -1);
+    worldRect.Width = Expand(right, Layer.PartWidth/4, 1) - worldRect.X;
+    worldRect.Height = Expand(bottom, Layer.PartHeight/4, 1) - worldRect.Y;
+    return worldRect;
+  }
+
   public ExportedImage ExportRect(Rectangle rect, GameLib.Fonts.Font objectFont)
-  { // expand the rectangle dimensions to multiples of the block size
-    int right = rect.Right, bottom = rect.Bottom;
-    bool objects=false, polys=false;
-    rect.X = Expand(rect.X, Layer.PartWidth/4, -1);
-    rect.Y = Expand(rect.Y, Layer.PartHeight/4, -1);
-    rect.Width = Expand(right, Layer.PartWidth/4, 1) - rect.X;
-    rect.Height = Expand(bottom, Layer.PartHeight/4, 1) - rect.Y;
-    
+  { bool objects=false, polys=false;
+    rect = ExpandRect(rect);
+
     if(rect.X<0 || rect.Y<0)
     { int xo=-Math.Min(rect.X, 0), yo=-Math.Min(rect.Y, 0);
       Shift(xo, yo);
@@ -260,6 +263,19 @@ class World : IDisposable
     finally { fs.Close(); }
   }
 
+  public void MoveRect(Rectangle rect, int wxo, int wyo)
+  { if(rect.X<0 || rect.Y<0)
+    { int xo=-Math.Min(rect.X, 0), yo=-Math.Min(rect.Y, 0);
+      Shift(xo, yo);
+      wxo -= xo; wyo -= yo;
+      rect.Offset(xo, yo);
+    }
+    foreach(Layer layer in layers) layer.MoveRect(rect, wxo, wyo);
+    foreach(Polygon poly in polygons)
+      if(rect.Contains(poly.Centroid))
+        for(int i=0; i<poly.Points.Length; i++) poly.Points[i].Offset(wxo, wyo);
+  }
+  
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
                      int objectLayer, Object[] hilite)
   { for(int i=0; i<layers.Length; i++)

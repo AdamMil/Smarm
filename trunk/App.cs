@@ -60,6 +60,7 @@ class App
   }
 
   public static string EditorPath { get { return (string)setup["editorPath"]; } }
+  public static string CompilePost { get { return (string)setup["compilePost"]; } }
   public static int    MaxTiles   { get { return maxTiles; } }
   public static string SmarmPath  { get { return (string)setup["dataPath"]; } }
   public static string SpritePath { get { return (string)setup["spritePath"]; } }
@@ -127,6 +128,7 @@ class App
       @"(smarm-setup-data (prop 'dataPath' 'string' (default './'))
                           (prop 'editorPath' 'string' (default 'PathToPSDEditor'))
                           (prop 'spritePath' 'string' (default './images/sprites/'))
+                          (prop 'compilePost' 'string' (default ''))
                           (prop 'tileMegs' 'int' (range 4 2048) (default 16))
                           (prop 'antialias' 'bool'))"))), null);
     if(File.Exists("setup"))
