@@ -462,7 +462,11 @@ class Object
     }
   }
 
-  public Rectangle Bounds { get { return new Rectangle(Location, type.Sprite.Size); } }
+  public Rectangle Bounds { get { return new Rectangle(TopLeft, type.Sprite.Size); } }
+  public Point TopLeft
+  { get { return new Point(location.X-type.Sprite.Size.Width/2, location.Y-type.Sprite.Size.Height/2); }
+  }
+
   public int Width  { get { return type.Sprite.Width; } }
   public int Height { get { return type.Sprite.Height; } }
 
@@ -492,8 +496,7 @@ class Object
 
   public void Save(TextWriter writer) { Save(writer, -1); }
   public void Save(TextWriter writer, int layer)
-  { writer.Write("({0} (pos {1} {2})", Name,
-                 layer==-1 ? Location.X : Location.X + Width/2f, layer==-1 ? Location.Y : Location.Y + Height/2f);
+  { writer.Write("({0} (pos {1} {2})", Name, Location.X, Location.Y);
     foreach(Property prop in type.Properties)
     { object value = this[prop.Name];
       if(value!=null)
