@@ -382,7 +382,7 @@ class Layer : IDisposable
             else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
                                   cs.Name, x*PartWidth, y*PartHeight, (int)zoom);
             if(fsfile==null) cs.Surface.Save(path+cs.Name, ImageType.PNG);
-            else if(true || cs.Changed || newPath || !fsfile.Contains(cs.Name))
+            else if(cs.Changed || newPath || !fsfile.Contains(cs.Name))
             { ms.Position = 0;
               ms.SetLength(0);
               cs.Surface.Save(ms, ImageType.PNG);

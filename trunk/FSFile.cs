@@ -64,14 +64,11 @@ class FSFile : IDisposable
     }
     if(entry==null || entry.Length!=length)
     { if(entry!=null) DeleteFile(entry);
-if(names[name]!=null) throw new Exception("stest4");
       int tmhead=length+name.Length, total=tmhead+HeaderSize;
       foreach(LinkedList.Node node in free)
       { entry = (FSEntry)node.Data;
         if(entry.Name==null && (entry.Length>=total || entry.Length==tmhead))
         { int extra = entry.Length-total;
-if(!free.Contains(node)) throw new Exception("wtf");
-if(!chunks.Contains(node)) throw new Exception("wtf2");
           if(extra==-HeaderSize)
           { entry.name = name;
             entry.length = length;
@@ -112,7 +109,6 @@ if(!chunks.Contains(node)) throw new Exception("wtf2");
 
     LinkedList.Node prev=node.PrevNode, next=node.NextNode;
     FSEntry entry = (FSEntry)node.Data;
-if(entry.Name==null) throw new Exception("stest1");
     entry.name = null;
     entry.length += name.Length;
     if(next!=null)
@@ -121,7 +117,6 @@ if(entry.Name==null) throw new Exception("stest1");
       { entry.length += nextEntry.Length+HeaderSize;
         chunks.Remove(next);
         free.Remove(next);
-if(chunks.Contains(next)) throw new Exception("stest7");
       }
     }
     if(prev!=null)
@@ -129,12 +124,9 @@ if(chunks.Contains(next)) throw new Exception("stest7");
       if(prevEntry.Name==null)
       { prevEntry.length += entry.Length+HeaderSize;
         chunks.Remove(node);
-if(!chunks.Contains(prev)) throw new Exception("stest5");
-if(!free.Contains(prev)) throw new Exception("stest8");
         return;
       }
     }
-if(!chunks.Contains(node)) throw new Exception("stest6");
     free.Add(node);
   }
 
@@ -192,15 +184,11 @@ Console.WriteLine("Wrote: alloc={0}, free={1}, namelen={2}, length={3}, chunks={
     names = new Hashtable();
     chunks = new LinkedList();
 
-int last=-1;
     while(file.Position<file.Length)
     { int offset   = (int)file.Position;
-if(offset<=last) throw new Exception("stest2");
-last=offset;
       byte nameLen = IOH.Read1(file);
       string name  = nameLen==0 ? null : IOH.ReadString(file, nameLen);
       int length   = IOH.ReadBE4(file);
-if(length<=0) throw new Exception("stest3");
       IOH.Skip(file, 4); // reserved field
       LinkedList.Node node = chunks.Append(new FSEntry(name, offset, length));
       if(name==null) free.Add(node);
