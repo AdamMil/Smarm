@@ -111,7 +111,7 @@ class PSD
   }
   
   static void InsertFile(Stream stream, string file)
-  { FileStream ins = File.Open(App.SmarmPath+file, FileMode.Open);
+  { FileStream ins = File.Open(App.SmarmPath+file, FileMode.Open, FileAccess.Read);
     byte[] data = new byte[1024];
     int read;
     while(true)
