@@ -53,7 +53,6 @@ class World : IDisposable
   public Layer[] Layers { get { return layers; } }
   public IList Polygons { get { return polygons; } }
 
-  public void AddLayer() { AddLayer(new Layer()); }
   public void AddLayer(Layer layer)
   { Layer[] narr = new Layer[layers.Length+1];
     Array.Copy(layers, narr, layers.Length);
@@ -61,20 +60,10 @@ class World : IDisposable
     layers = narr;
   }
 
-  public void Clear()
-  { if(layers==null)
-    { layers = new Layer[8];
-      for(int i=0; i<layers.Length; i++) layers[i] = new Layer();
-    }
-    else foreach(Layer layer in layers) layer.Dispose();
-    polygons.Clear();
-    backColor=Color.Black;
-    changed=false;
-  }
+  public void Clear() { Clear(false); }
 
   public void Compile(string directory)
-  { string path = directory;
-    path.Replace('\\', '/');
+  { string path = directory.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
@@ -91,7 +80,7 @@ class World : IDisposable
   }
 
   public void Dispose()
-  { Clear();
+  { Clear(true);
     GC.SuppressFinalize(this);
   }
 
@@ -103,31 +92,40 @@ class World : IDisposable
     rect.Height = Expand(rect.Bottom, Layer.PartHeight, 1) - rect.Y;
   }
 
+  public void InsertLayer(int pos)
+  { Layer layer = new Layer(this);
+    AddLayer(layer);
+    for(int i=layers.Length-1; i>pos; i--) layers[i] = layers[i-1];
+    layers[pos] = layer;
+  }
+  
   public void Load(string directory)
   { if(!Directory.Exists(directory))
       throw new DirectoryNotFoundException(string.Format("Directory '{0}' not found", directory));
 
-    string path = directory;
-    path.Replace('\\', '/');
+    string path = directory.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
     FileStream fs = File.Open(path+"definition", FileMode.Open, FileAccess.Read);
-    ZipFile zip = new ZipFile(path+"images.zip");
 
     try
     { Clear();
+      zip = new ZipFile(path+"images.zip");
       List level = new List(fs);
       if(level.Contains("bgcolor")) backColor = level["bgcolor"].ToColor();
       foreach(List list in level)
       { if(list.Name=="layer")
-        { Layer layer = new Layer(list, zip);
+        { Layer layer = new Layer(this, list);
           int z = list.GetInt(0);
           if(z+1>layers.Length) AddLayer(layer);
           else layers[z] = layer;
         }
         else if(list.Name=="polygon") polygons.Add(new Polygon(list));
       }
+      basePath = path;
+      tempPath = false;
     }
-    finally { fs.Close(); zip.Close(); }
+    catch(Exception e) { Clear(); throw e; }
+    finally { fs.Close(); }
   }
 
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom)
@@ -139,8 +137,7 @@ class World : IDisposable
   }
 
   public void Save(string directory)
-  { string path = directory;
-    path.Replace('\\', '/');
+  { string path = directory.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
@@ -157,16 +154,45 @@ class World : IDisposable
     zip.Finish();
     zip.Close();
     changed = false;
+    
+    this.zip = new ZipFile(path+"images.zip");
+    basePath = path;
+    tempPath = false;
   }
   
+  void Clear(bool disposing)
+  { if(zip!=null) { zip.Close(); zip=null; }
+    if(tempPath) Directory.Delete(basePath, true);
+
+    if(!disposing)
+    { basePath = Path.GetTempFileName();
+      File.Delete(basePath);
+      Directory.CreateDirectory(basePath);
+      tempPath = true;
+    }
+
+    if(layers!=null) foreach(Layer layer in layers) layer.Dispose();
+    layers = new Layer[8];
+    for(int i=0; i<layers.Length; i++) layers[i] = new Layer(this);
+    polygons.Clear();
+    backColor=Color.Black;
+    changed=false;
+    nextTile=0;
+  }
+
   int Expand(int value, int block, int sign)
   { return value + (value<0 ? (block - value%block) : (value + value%block)) * sign;
   }
 
+  internal int NextTile { get { return nextTile++; } }
+  internal ZipFile zip;
+  internal string basePath;
+
   ArrayList polygons = new ArrayList();
   Layer[] layers;
   Color backColor;
-  bool changed;
+  int nextTile;
+  bool changed, tempPath;
 }
 
 } // namespace Smarm
