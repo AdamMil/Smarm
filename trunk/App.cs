@@ -54,23 +54,24 @@ class App
     SetMode(640, 480);
 
     Events.Initialize();
-    Event e;
-    while(true)
-    { e = Events.NextEvent();
-      if(desktop.ProcessEvent(e) != FilterAction.Drop)
-      { if(e is RepaintEvent) Video.Flip();
-        else if(e is ResizeEvent)
-        { ResizeEvent re = (ResizeEvent)e;
-          SetMode(re.Width, re.Height);
-        }
-        else if(e is ExceptionEvent) throw ((ExceptionEvent)e).Exception;
-        else if(e is QuitEvent) break;
+    Events.PumpEvents(new EventProcedure(EventProc));
+  }
+
+  static bool EventProc(Event e)
+  { if(desktop.ProcessEvent(e) != FilterAction.Drop)
+    { if(e is RepaintEvent) Video.Flip();
+      else if(e is ResizeEvent)
+      { ResizeEvent re = (ResizeEvent)e;
+        SetMode(re.Width, re.Height);
       }
-      else if(desktop.Updated)
-      { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
-        desktop.Updated=false;
-      }
+      else if(e is ExceptionEvent) throw ((ExceptionEvent)e).Exception;
+      else if(e is QuitEvent) return false;
     }
+    else if(desktop.Updated)
+    { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
+      desktop.Updated=false;
+    }
+    return true;
   }
 
   static SmarmDesktop desktop = new SmarmDesktop();
