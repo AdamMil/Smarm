@@ -1,6 +1,6 @@
 /*
 Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
-http://www.adammil.net
+http://www.adammil.net/
 Copyright (C) 2003-2004 Adam Milazzo
 
 This program is free software; you can redistribute it and/or
@@ -46,6 +46,7 @@ class App
     }
   }
 
+  public static string EditorPath { get { return (string)setup["editorPath"]; } }
   public static string SmarmPath  { get { return (string)setup["dataPath"]; } }
   public static string SpritePath { get { return (string)setup["spritePath"]; } }
   public static Object SetupObject { get { return setup; } }
@@ -101,6 +102,7 @@ class App
   static void Init()
   { ObjectDef def = new ObjectDef(new List(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(
       @"(smarm-setup-data (prop 'dataPath' 'string' (default './'))
+                          (prop 'editorPath' 'string' (default 'PathToPhotoshopExecutable'))
                           (prop 'spritePath' 'string' (default './images/sprites/'))
                           (prop 'antialias' 'bool'))"))), null);
     if(File.Exists("setup"))

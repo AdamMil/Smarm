@@ -1,6 +1,6 @@
 /*
 Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
-http://www.adammil.net
+http://www.adammil.net/
 Copyright (C) 2003-2004 Adam Milazzo
 
 This program is free software; you can redistribute it and/or
@@ -25,41 +25,77 @@ using GameLib.Video;
 namespace Smarm
 {
 
+class PSDLayer
+{ public PSDLayer(Stream stream)
+  { int y=IOH.ReadBE4(stream), x=IOH.ReadBE4(stream), y2=IOH.ReadBE4(stream), x2=IOH.ReadBE4(stream);
+    Bounds = new Rectangle(x, y, x2-x, y2-y);
+
+    Channels = IOH.ReadBE2(stream);
+    if(Channels<3 || Channels>4) throw new NotSupportedException("Unsupported number of channels: "+Channels);
+    IOH.Skip(stream, Channels*6); // FIXME: assumes [A]RGB
+
+    if(IOH.ReadString(stream, 4)!="8BIM") throw new ArgumentException("Unknown blend signature");
+    { string sval = IOH.ReadString(stream, 4);
+      if(sval!="norm")
+        throw new NotSupportedException(string.Format("Unsupported blend mode '{0}' for layer", sval));
+    }
+    int opacity = IOH.Read1(stream);
+    if(opacity != 255)
+      throw new NotSupportedException(string.Format("Unsupported opacity level {0} for layer", opacity));
+    IOH.Skip(stream, 3); // misc stuff
+    IOH.Skip(stream, IOH.ReadBE4(stream)); // extra layer data
+  }
+
+  public Rectangle Bounds;
+  public Surface Surface;
+  public int Channels;
+}
+
+class PSDImage
+{ public PSDLayer[] Layers;
+  public int Width, Height, Channels;
+}
+
 class PSD
-{ public static Surface[] ReadPSD(Stream stream)
-  { int width, height, chans;
+{ public static PSDImage ReadPSD(Stream stream)
+  { PSDImage img = new PSDImage();
 
     if(IOH.ReadString(stream, 4) != "8BPS") throw new ArgumentException("Not a photoshop file");
     int value = IOH.ReadBE2U(stream);
     if(value != 1) throw new NotSupportedException("Unsupported PSD version number: "+value);
     IOH.Skip(stream, 6);
-    chans = IOH.ReadBE2U(stream);
-    if(chans<3 || chans>4) throw new NotSupportedException("Unsupported number of channels: "+chans);
-    height = IOH.ReadBE4(stream);
-    width  = IOH.ReadBE4(stream);
-    value  = IOH.ReadBE2U(stream);
+    img.Channels = IOH.ReadBE2U(stream);
+    if(img.Channels<3 || img.Channels>4)
+      throw new NotSupportedException("Unsupported number of channels: "+img.Channels);
+    img.Height = IOH.ReadBE4(stream);
+    img.Width  = IOH.ReadBE4(stream);
+    value = IOH.ReadBE2U(stream);
     if(value != 8) throw new NotSupportedException("Unsupported channel depth: "+value);
     value = IOH.ReadBE2U(stream);
     if(value != 3) throw new NotSupportedException("Unsupported color mode: "+value);
 
     IOH.Skip(stream, IOH.ReadBE4(stream)); // skip color block
     IOH.Skip(stream, IOH.ReadBE4(stream)); // skip image resources
-    
+
     int miscLen = IOH.ReadBE4(stream);
     if(miscLen!=0) // length of miscellaneous info section
     { IOH.Skip(stream, 4);
       int numLayers = Math.Abs(IOH.ReadBE2(stream));
       if(numLayers==0) { IOH.Skip(stream, miscLen-6); goto noLayers; }
 
-      Surface[] surfaces = new Surface[numLayers];
-      Layer[] layers = new Layer[numLayers];
-      for(int i=0; i<numLayers; i++) layers[i] = new Layer(stream);
+      img.Layers = new PSDLayer[numLayers];
+      for(int i=0; i<numLayers; i++) img.Layers[i] = new PSDLayer(stream);
       for(int i=0; i<numLayers; i++)
-        surfaces[i] = ReadImageData(stream, width, height, layers[i].Bounds, layers[i].Channels, true);
-      return surfaces;
+        img.Layers[i].Surface = ReadImageData(stream, img.Width, img.Height, img.Layers[i].Bounds,
+                                              img.Layers[i].Channels, true);
+      return img;
     }
     noLayers:
-    return new Surface[] { ReadImageData(stream, width, height, new Rectangle(0, 0, width, height), chans, false) };
+    img.Layers = new PSDLayer[1];
+    img.Layers[0].Bounds = new Rectangle(0, 0, img.Width, img.Height);
+    img.Layers[0].Channels = img.Channels;
+    img.Layers[0].Surface = ReadImageData(stream, img.Width, img.Height, img.Layers[0].Bounds, img.Channels, false);
+    return img;
   }
 
   public static void WritePSD(Stream stream, Surface[] layers, Color bgColor)
@@ -73,15 +109,12 @@ class PSD
     IOH.WriteBE2(stream, 3); // color mode (3=RGB)
 
     IOH.WriteBE4(stream, 0); // color data section
-    InsertFile(stream, "psd_resources");
+    IOH.WriteBE4(stream, 0); // psd resources section
     
     if(layers.Length>1)
-    { int miscLen=10, dataLen=layers[0].Width*layers[0].Height * layers.Length;
-      for(int i=0; i<layers.Length; i++)
-        //miscLen += 50 + (layers[i].UsingAlpha ? 4 : 3)*14 + (7+i.ToString().Length+3)/4*4;
-        miscLen += 30 + 236 + (layers[i].UsingAlpha ? 4 : 3)*6;
-      IOH.WriteBE4(stream, miscLen+dataLen); // size of the miscellaneous info section
-      IOH.WriteBE4(stream, miscLen+dataLen-8); // size of the layer section
+    { int pos = (int)stream.Position;
+      IOH.WriteBE4(stream, 0); // size of the miscellaneous info section (to be filled later)
+      IOH.WriteBE4(stream, 0); // size of the layer section (to be filled later)
       IOH.WriteBE2(stream, (short)-layers.Length); // number of layers (yes, it's negative for a reason)
 
       for(int layer=0; layer<layers.Length; layer++)
@@ -101,26 +134,29 @@ class PSD
         stream.WriteByte(0);   // clipping (0=base)
         stream.WriteByte(0);   // flags
         stream.WriteByte(0);   // reserved
-        /*int extraLen = 36 + (surf.UsingAlpha ? 4 : 3)*8 + (7+layer.ToString().Length+3)/4*4;
+        int extraLen = 8 + (7+layer.ToString().Length+3)/4*4;
         IOH.WriteBE4(stream, extraLen); // size of the extra layer infomation
         IOH.WriteBE4(stream, 0); // layer mask
-        IOH.WriteBE4(stream, 40); // layer blending size
-        for(int i=surf.UsingAlpha ? 10 : 8; i>0; i--) IOH.WriteBE4(stream, 65535); // layer blending data
+        IOH.WriteBE4(stream, 0); // layer blending size
         string name = "Layer "+(layer+1);
         stream.WriteByte((byte)name.Length);
         IOH.WriteString(stream, name); // layer name
-        if(((name.Length+1)&3) != 0) for(int i=4-((name.Length+1)&3); i>0; i--) stream.WriteByte(0); // name padding*/
-        InsertFile(stream, "layerextras");
+        if(((name.Length+1)&3) != 0) for(int i=4-((name.Length+1)&3); i>0; i--) stream.WriteByte(0); // name padding
       }
 
       foreach(Surface layer in layers) WriteImageData(stream, layer, true);
       IOH.WriteBE4(stream, 0); // global layer mask section
+      int dist = (int)stream.Position - pos - 4;
 
       // save the flat image
       Surface flat = new Surface(layers[0].Width, layers[0].Height, 32);
       flat.Fill(bgColor);
       foreach(Surface layer in layers) layer.Blit(flat);
       WriteImageData(stream, flat, false);
+
+      stream.Position = pos;
+      IOH.WriteBE4(stream, dist); // miscellaneous info section size
+      IOH.WriteBE4(stream, dist-8); // layer section size
     }
     else
     { IOH.WriteBE4(stream, 0); // misc info section
@@ -254,32 +290,6 @@ class PSD
       i++;
     }
     return i;
-  }
-  
-  struct Layer
-  { public Layer(Stream stream)
-    { int y=IOH.ReadBE4(stream), x=IOH.ReadBE4(stream), y2=IOH.ReadBE4(stream), x2=IOH.ReadBE4(stream);
-      if(x2-x==0 || y2-y==0) throw new NotSupportedException("Unsupported: layer with no area");
-      Bounds = new Rectangle(x, y, x2-x, y2-y);
-
-      Channels = IOH.ReadBE2(stream);
-      if(Channels<3 || Channels>4) throw new NotSupportedException("Unsupported number of channels: "+Channels);
-      IOH.Skip(stream, Channels*6); // FIXME: assumes [A]RGB
-
-      if(IOH.ReadString(stream, 4)!="8BIM") throw new ArgumentException("Unknown blend signature");
-      { string sval = IOH.ReadString(stream, 4);
-        if(sval!="norm")
-          throw new NotSupportedException(string.Format("Unsupported blend mode '{0}' for layer", sval));
-      }
-      int opacity = IOH.Read1(stream);
-      if(opacity != 255)
-        throw new NotSupportedException(string.Format("Unsupported opacity level {0} for layer", opacity));
-      IOH.Skip(stream, 3); // misc stuff
-      IOH.Skip(stream, IOH.ReadBE4(stream)); // extra layer data
-    }
-
-    public Rectangle Bounds;
-    public int Channels;
   }
 }
 
