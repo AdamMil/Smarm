@@ -124,6 +124,7 @@ struct Property
       if(Type=="int") return 0;
       else if(Type=="float") return 0.0;
       else if(Type=="color") return Color.Black;
+      else if(Type=="bool") return false;
       return null;
     }
   }

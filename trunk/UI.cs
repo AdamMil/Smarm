@@ -33,7 +33,7 @@ namespace Smarm
 
 #region MenuLabel
 class MenuLabel : Label
-{ public MenuLabel() { Style |= ControlStyle.Clickable; TextPadding=1; }
+{ public MenuLabel() { Style |= ControlStyle.Clickable; Padding=new RectOffset(1); }
 
   public MenuBase Menu { get { return menu; } set { menu=value; } }
 
@@ -1358,9 +1358,9 @@ class FileChooser : Form
       int width  = Math.Max(font.CalculateSize(label.Text).Width+pad*2, desktop.Width/2);
       int height = pad*2+sep+font.LineSkip*5/2;
 
-      LayoutBounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
+      Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
       label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip+1);
-      path.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
+      path.Bounds  = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
       path.SelectOnFocus = false;
       path.Focus();
       path.CaretPosition = path.Text.Length;
