@@ -152,6 +152,10 @@ class List : IEnumerable
         stream.Write(s);
         stream.Write(delim);
       }
+      else if(o is double)
+      { double d = (double)o;
+        stream.Write(d.ToString("R"));
+      }
       else stream.Write(o.ToString());
       wrote=true;
     }
