@@ -58,7 +58,8 @@ class App
 
   static void Main()
   { WM.WindowTitle = "Smarm "+Version;
-    desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"arial.ttf", 12);
+    desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
+    desktop.World.Clear(); // start a new level
 
     Video.Initialize();
     SetMode(640, 480);
@@ -75,9 +76,11 @@ class App
   }
 
   static void LoadObjects()
-  { List objList = new List(File.Open(SmarmPath+"objects", FileMode.Open));
+  { FileStream file = File.Open(SmarmPath+"objects", FileMode.Open);
+    List objList = new List(file);
     ObjectDef.LoadDefs(objList["objects"]);
     PolygonType.LoadDefs(objList["polygon-types"]);
+    file.Close();
   }
 
   static SmarmDesktop desktop = new SmarmDesktop();
