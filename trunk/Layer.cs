@@ -300,11 +300,10 @@ class Layer : IDisposable
   }
 
   bool IsEmpty(Surface s) // return true if a surface contains only transparent pixels
-  { // first check diagonally
-    int len = Math.Min(s.Width, s.Height);
+  { int len = Math.Min(s.Width, s.Height);
     s.Lock();
     try
-    { for(int i=0; i<len; i++) if(s.GetPixel(i, i).A!=0) return false;
+    { for(int i=0; i<len; i++) if(s.GetPixel(i, i).A!=0) return false; // first check diagonally
       for(int i=0; i<len; i++) if(s.GetPixel(s.Width-i-1, i).A!=0) return false;
       for(int i=0; i<len; i++) if(s.GetPixel(i, s.Height-i-1).A!=0) return false;
       for(int i=1; i<=len; i++) if(s.GetPixel(s.Width-i, s.Height-i).A!=0) return false;

@@ -18,6 +18,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // TODO: make shift-click align object with the last object placed
 // TODO: shift-click on a polygon should add it to the selection... just plain click should make it the only one selected
+// TODO: prevent multiple simultaneous popups
 using System;
 using System.Collections;
 using System.Drawing;
@@ -175,7 +176,10 @@ class TopBar : ContainerControl
     Compile();
   }
 
-  public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new SmarmQuitEvent()); }
+  public void Exit()
+  { if((quitBox==null || quitBox.Parent==null) && CanUnloadLevel())
+      GameLib.Events.Events.PushEvent(new SmarmQuitEvent());
+  }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -187,8 +191,9 @@ class TopBar : ContainerControl
 
   bool CanUnloadLevel()
   { if(App.Desktop.World.World.ChangedSinceSave)
-    { int button = MessageBox.Show(Desktop, "Save changes?", "This level has been altered. Save changes?",
-                                   MessageBoxButtons.YesNoCancel);
+    { if(quitBox==null) quitBox = MessageBox.Create("Save changes?", "This level has been altered. Save changes?",
+                                                    MessageBoxButtons.YesNoCancel, 2);
+      int button = quitBox.Show(App.Desktop);
       if(button==0) return Save();
       else if(button==1) return true;
       else return false;
@@ -271,6 +276,7 @@ class TopBar : ContainerControl
   MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel(), lblType=new MenuLabel();
   Label  lblMouse=new Label();
   MenuBar menuBar=new MenuBar();
+  MessageBox quitBox;
   
   string lastPath, lastCompile;
 }
@@ -1103,6 +1109,7 @@ class FileChooser : Form
   { path.Text=initialPath.Replace('\\', '/');
     KeyPreview=true;
     Controls.AddRange(label, path);
+    TitleBar.Visible = false;
   }
 
   public FileType AllowedTypes { get { return type; } set { type=value; } }
@@ -1117,7 +1124,7 @@ class FileChooser : Form
       int width  = Math.Max(font.CalculateSize(label.Text).Width+pad*2, desktop.Width/2);
       int height = pad*2+sep+font.LineSkip*5/2;
 
-      Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
+      LayoutBounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
       label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip+1);
       path.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
       path.SelectOnFocus = false;
@@ -1398,7 +1405,8 @@ class ObjectProperties : Form
         height += btnHeight;
       }
 
-      Size size = new Size(width, height+ypad);
+      Text = "Properties";
+      Size size = new Size(width, height+ypad+TitleBar.Height);
       SetBounds(new Point((desktop.Width-size.Width)/2, (desktop.Height-size.Height)/2), size, BoundsMode.Absolute);
     }
     DialogResult = false;
