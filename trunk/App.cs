@@ -88,10 +88,7 @@ class App
       else if(e is QuitEvent) App.Desktop.TopBar.Exit(); // no encapsulation, blah
       else if(e is SmarmQuitEvent) return false;
     }
-    else if(desktop.Updated)
-    { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
-      desktop.Updated=false;
-    }
+    else desktop.UpdateDisplay();
     return true;
   }
 
