@@ -420,9 +420,13 @@ class WorldDisplay : Control
       if(selectMode==SelectMode.None || !dontQuit) goto abort;
 
       App.Desktop.StatusText = "Waiting for edit to complete...";
-      world.EditRect(selectedRect, Font);
-      Invalidate();
-      App.Desktop.StatusText = "Import completed.";
+      try
+      { world.EditRect(selectedRect, Font);
+        Invalidate();
+        App.Desktop.StatusText = "Import completed.";
+      }
+      catch(Exception e) { MessageBox.Show(Desktop, "Error occurred", e.Message); }
+      return;
 
       abort:
       if(dontQuit) App.Desktop.StatusText = "Edit process aborted.";
