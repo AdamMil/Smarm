@@ -84,6 +84,7 @@ class TopBar : ContainerControl
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
     menu.Add(new MenuItem("Toggle fullscreen", 'F', new KeyCombo(KeyMod.Alt, Key.Enter))).Click += new EventHandler(toggleFullscreen_OnClick);
+    menu.Add(new MenuItem("Toggle alltiles", 'P', new KeyCombo(Key.F1))).Click += new EventHandler(toggleTiles_OnClick);
     menu.Add(new MenuItem("Toggle objects", 'O', new KeyCombo(Key.F2))).Click += new EventHandler(toggleObjects_OnClick);
     menu.Add(new MenuItem("Toggle polygons", 'P', new KeyCombo(Key.F3))).Click += new EventHandler(togglePolygons_OnClick);
 
@@ -225,6 +226,9 @@ class TopBar : ContainerControl
   }
   void togglePolygons_OnClick(object sender, EventArgs e)
   { App.Desktop.World.ShowPolygons = !App.Desktop.World.ShowPolygons;
+  }
+  void toggleTiles_OnClick(object sender, EventArgs e)
+  { App.Desktop.World.ShowAllTiles = !App.Desktop.World.ShowAllTiles;
   }
 
   void toggleAntialias_OnClick(object sender, EventArgs e) { App.AntialiasText = !App.AntialiasText; }
@@ -381,6 +385,11 @@ class WorldDisplay : Control
     set { App.Desktop.TopBar.TypeMenu.Text=value; }
   }
   
+  public bool ShowAllTiles
+  { get { return showAllTiles; }
+    set { if(value!=showAllTiles) { showAllTiles=value; Invalidate(); } }
+  }
+
   public bool ShowObjects
   { get { return showObjs; }
     set { if(value!=showObjs) { showObjs=value; Invalidate(); } }
@@ -390,7 +399,7 @@ class WorldDisplay : Control
   { get { return showPolys; }
     set { if(value!=showPolys) { showPolys=value; Invalidate(); } }
   }
-
+  
   public World World { get { return world; } }
   
   public ZoomMode ZoomMode
@@ -432,6 +441,8 @@ class WorldDisplay : Control
     ZoomMode = ZoomMode.Full;
     lastZoom = ZoomMode.Normal;
     BackColor = world.BackColor;
+    showAllTiles = true;
+    showAllObjects = false;
     Invalidate();
   }
 
@@ -518,7 +529,7 @@ class WorldDisplay : Control
       Size size = WorldToWindow(wrect).Size;
 
       dragImage = new Surface(size.Width, size.Height, 32);
-      world.Render(dragImage, wrect.X*4, wrect.Y*4, dragImage.Bounds, zoom, World.AllLayers, null);
+      world.Render(dragImage, wrect.X*4, wrect.Y*4, dragImage.Bounds, zoom, World.AllLayers, World.AllLayers, null);
       while(dragImage!=null && (dontQuit=GameLib.Events.Events.PumpEvent()));
       if(!dontQuit) goto abort;
     }
@@ -575,7 +586,8 @@ class WorldDisplay : Control
     if(zoom==ZoomMode.Normal) { xoff*=4; yoff*=4; }
     else if(zoom==ZoomMode.Tiny) { xoff*=16; yoff*=16; }
     world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom,
-                 showAll ? World.AllLayers : showObjs ? layer : World.NoLayer,
+                 showAllTiles ? World.AllLayers : layer,
+                 showAllObjects ? World.AllLayers : showObjs ? layer : World.NoLayer,
                  (Object[])selected.Objs.ToArray(typeof(Object)));
 
     if(!showPolys) return;
@@ -622,13 +634,21 @@ class WorldDisplay : Control
   
   protected override void OnMouseDown(ClickEventArgs e)
   { if(e.CE.MouseWheel)
-    { if(e.CE.Button==MouseButton.WheelDown)
-      { if(zoom==ZoomMode.Full) ZoomMode=ZoomMode.Normal;
-        else if(zoom==ZoomMode.Normal) ZoomMode=ZoomMode.Tiny;
+    { if(Keyboard.HasAnyMod(KeyMod.Shift))
+      { if(e.CE.Button==MouseButton.WheelDown)
+        { if(layer>0) SelectedLayer--;
+        }
+        else if(layer<world.Layers.Length-1) SelectedLayer++;
       }
-      else if(e.CE.Button==MouseButton.WheelUp)
-      { if(zoom==ZoomMode.Normal) ZoomMode=ZoomMode.Full;
-        else if(zoom==ZoomMode.Tiny) ZoomMode=ZoomMode.Normal;
+      else
+      { if(e.CE.Button==MouseButton.WheelDown)
+        { if(zoom==ZoomMode.Full) ZoomMode=ZoomMode.Normal;
+          else if(zoom==ZoomMode.Normal) ZoomMode=ZoomMode.Tiny;
+        }
+        else
+        { if(zoom==ZoomMode.Normal) ZoomMode=ZoomMode.Full;
+          else if(zoom==ZoomMode.Tiny) ZoomMode=ZoomMode.Normal;
+        }
       }
       e.Handled = true;
     }
@@ -707,8 +727,8 @@ class WorldDisplay : Control
         e.Handled=true;
       }
     }
-    else if(e.KE.Key==Key.Tab && !showAll)
-    { showAll=true;
+    else if(e.KE.Key==Key.Tab && !showAllObjects)
+    { showAllObjects=true;
       Invalidate();
       e.Handled=true;
     }
@@ -781,8 +801,8 @@ class WorldDisplay : Control
   }
 
   protected override void OnKeyUp(KeyEventArgs e)
-  { if(e.KE.Key==Key.Tab && showAll)
-    { showAll=false;
+  { if(e.KE.Key==Key.Tab && showAllObjects)
+    { showAllObjects=false;
       Invalidate();
       e.Handled=true;
     }
@@ -805,7 +825,7 @@ class WorldDisplay : Control
           }
         }
       }
-      else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, true))
+      else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, false))
       { subMode=SubMode.DragSelected;
         goto done;
       }
@@ -1180,7 +1200,7 @@ class WorldDisplay : Control
   ZoomMode zoom, lastZoom;
   SelectMode selectMode;
   Surface dragImage;
-  bool     showAll, showObjs, showPolys;
+  bool     showAllObjects, showAllTiles, showObjs, showPolys;
 }
 #endregion
 

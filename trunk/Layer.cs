@@ -98,7 +98,7 @@ class Layer : IDisposable
 
   /* render the world starting at full-coord fx,fy into dest's drect using the zoom level specified */
   public void Render(Surface dest, int fx, int fy, Rectangle drect, ZoomMode zoom,
-                     bool renderObjects, Object[] hilite, bool blend)
+                     bool renderTiles, bool renderObjects, Object[] hilite, bool blend)
   { fx = FloorDiv(fx, (int)zoom); fy = FloorDiv(fy, (int)zoom); // convert to zoomed coordinates
     int ozx=fx, ozy=fy, bx=FloorDiv(fx, PartWidth), by=FloorDiv(fy, PartHeight), bw=(width+(int)zoom-1)/(int)zoom, bh=(height+(int)zoom-1)/(int)zoom;
     fx %= PartWidth; fy %= PartHeight; if(fx<0) fx=PartWidth+fx; if(fy<0) fy=PartHeight+fy;
@@ -108,38 +108,39 @@ class Layer : IDisposable
 
     Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
 
-    for(int xi=0, dx=drect.X; dx<=drect.Right; xi++)
-    { if(bx+xi>=bw) break;
-      if(bx+xi>=0)
-        for(int yi=0, dy=drect.Y; dy<=drect.Bottom; yi++)
-        { if(by+yi>=bh) break;
-          if(by+yi>=0)
-          { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
-            // if the surface is null and we're not at full zoom level, try to get it by scaling another zoom level
-            // down to our zoom level
-            if(cs==null && zoom!=ZoomMode.Full)
-            { ScaleDown(bx+xi, by+yi, zoom);
-              cs = GetSurface(surfaces, bx+xi, by+yi);
-            }
-            if(cs!=null)
-            { Point sloc = new Point(xi==0 ? fx : 0, yi==0 ? fy : 0);
-              Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
-                                              Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
-              if(cs.Color.A==0)
-              { cs.Surface.UsingAlpha = blend; // if 'blend', do alpha blending. otherwise, copy the alpha information
-                cs.Surface.Blit(dest, srect, dx, dy);
-                cs.Surface.UsingAlpha = true;
+    if(renderTiles)
+      for(int xi=0, dx=drect.X; dx<=drect.Right; xi++)
+      { if(bx+xi>=bw) break;
+        if(bx+xi>=0)
+          for(int yi=0, dy=drect.Y; dy<=drect.Bottom; yi++)
+          { if(by+yi>=bh) break;
+            if(by+yi>=0)
+            { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
+              // if the surface is null and we're not at full zoom level, try to get it by scaling another zoom level
+              // down to our zoom level
+              if(cs==null && zoom!=ZoomMode.Full)
+              { ScaleDown(bx+xi, by+yi, zoom);
+                cs = GetSurface(surfaces, bx+xi, by+yi);
               }
-              else
-              { srect.Location = new Point(dx, dy);
-                Primitives.FilledBox(dest, srect, Color.FromArgb(blend ? cs.Color.A : (byte)255, cs.Color));
+              if(cs!=null)
+              { Point sloc = new Point(xi==0 ? fx : 0, yi==0 ? fy : 0);
+                Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
+                                                Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
+                if(cs.Color.A==0)
+                { cs.Surface.UsingAlpha = blend; // if 'blend', do alpha blending. otherwise, copy the alpha information
+                  cs.Surface.Blit(dest, srect, dx, dy);
+                  cs.Surface.UsingAlpha = true;
+                }
+                else
+                { srect.Location = new Point(dx, dy);
+                  Primitives.FilledBox(dest, srect, Color.FromArgb(blend ? cs.Color.A : (byte)255, cs.Color));
+                }
               }
             }
+            dy += yi==0 ? PartHeight-fy : PartHeight;
           }
-          dy += yi==0 ? PartHeight-fy : PartHeight;
-        }
-      dx += xi==0 ? PartWidth-fx : PartWidth;
-    }
+        dx += xi==0 ? PartWidth-fx : PartWidth;
+      }
     
     if(renderObjects) RenderObjects(dest, ozx, ozy, drect, zoom, hilite);
   }

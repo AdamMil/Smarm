@@ -492,7 +492,8 @@ class Object
 
   public void Save(TextWriter writer) { Save(writer, -1); }
   public void Save(TextWriter writer, int layer)
-  { writer.Write("({0} (pos {1} {2})", Name, Location.X, Location.Y);
+  { writer.Write("({0} (pos {1} {2})", Name,
+                 layer==-1 ? Location.X : Location.X + Width/2f, layer==-1 ? Location.Y : Location.Y + Height/2f);
     foreach(Property prop in type.Properties)
     { object value = this[prop.Name];
       if(value!=null)
