@@ -123,6 +123,7 @@ struct Property
       }
       if(Type=="int") return 0;
       else if(Type=="float") return 0.0;
+      else if(Type=="color") return Color.Black;
       return null;
     }
   }
@@ -160,6 +161,15 @@ struct Property
           return EnumError(limit, value);
         }
         return null;
+      case "color":
+        Color c;
+        try { c = ToColor(value); } catch { return "Not a valid color"; }
+        if(LimitType=="enum")
+        { List limit=Limiter;
+          for(int i=1; i<limit.Length; i++) if(ToColor(limit[i])==c) return null;
+          return EnumError(limit, c);
+        }
+        return null;
       case "bool": return null;
     }
     return null; // can't get here
@@ -178,16 +188,43 @@ struct Property
     return null; // can't get here
   }
   
-  string EnumError(List limit, object value)
+  public static Color ToColor(object value)
+  { if(value is Color) return (Color)value;
+    else if(value is int) return Color.FromArgb((int)value);
+    else if(value is string)
+    { string cs = (string)value;
+      if(cs[0]=='#')
+        return Color.FromArgb(HexToInt(cs.Substring(1,2)), HexToInt(cs.Substring(3,2)), HexToInt(cs.Substring(5,2)));
+      else
+      { string[] vals = cs.Split(',');
+        if(vals.Length==3) return Color.FromArgb(int.Parse(vals[0]), int.Parse(vals[1]), int.Parse(vals[2]));
+        else return Color.FromName(cs);
+      }
+    }
+    else throw new ApplicationException("Not a valid color!");
+  }
+  
+  static string EnumError(List limit, object value)
   { string s = value.ToString()+" is not a valid value for enum";
     for(int i=1; i<limit.Length; i++) s += (i==1 ? " (" : " ") + limit[i];
     if(limit.Length>1) s += ')';
     return s;
   }
 
+  static int HexToInt(string hex)
+  { string digits = "0123456789abcdef";
+    int res = 0;
+    foreach(char c in hex)
+    { int pos = digits.IndexOf(char.ToLower(c));
+      if(pos==-1) throw new ApplicationException("Not a valid hex string");
+      res = (res<<4) | pos;
+    }
+    return res;
+  }
+
   List data;
   
-  static string[] validTypes = new string[] { "int", "float", "string", "bool" };
+  static string[] validTypes = new string[] { "int", "float", "string", "bool", "color" };
   static string[] validLimiters = new string[] { "range", "enum" };
 }
 #endregion
@@ -404,6 +441,7 @@ class Polygon
   */
   public Polygon[] Split()
   { if(points.Length<3) return null;
+    return null;
   }
 
   void Load(List list)
@@ -451,6 +489,7 @@ class Object
           case "float": value=Convert.ToDouble(value); break;
           case "string": value=value.ToString(); break;
           case "bool": value=Convert.ToBoolean(value); break;
+          case "color": value=Property.ToColor(value); break;
         }
         return value;
       }
@@ -500,7 +539,11 @@ class Object
     foreach(Property prop in type.Properties)
     { object value = this[prop.Name];
       if(value!=null)
-      { if(prop.Type=="string")
+      { if(prop.Type=="color")
+        { Color c = (Color)value;
+          value = string.Format("\"{0},{1},{2}\"", c.R, c.G, c.B);
+        }
+        if(prop.Type=="string")
         { string s = (string)value;
           if(s.IndexOf('\"')!=-1) value = "'" + s + '\'';
           else value = "\"" + s + '\"';
