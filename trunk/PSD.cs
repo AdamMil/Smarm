@@ -177,7 +177,7 @@ class PSD
                 }
               }
               dest += yinc;
-              if(layer && (area.Width&1)!=0) src++;
+              //if(layer && (area.Width&1)!=0) src++; // TODO: test this with an actual odd-width layer
             }
           if(layer) yi=0;
         }
