@@ -17,7 +17,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 // TODO: make shift-click align object with the last object placed
-// TODO: shift-click on a polygon should add it to the selection... just plain click should make it the only one selected
 // TODO: prevent multiple simultaneous popups
 using System;
 using System.Collections;
@@ -483,7 +482,10 @@ class WorldDisplay : Control
   }
 
   public void MoveRect()
-  { if(!SelectRectangle("move")) goto abort;
+  { MessageBox.Show(Desktop, "Not implemented", "Sorry, not implemented yet. Bug the author.");
+    return;
+
+    if(!SelectRectangle("move")) goto abort;
     App.Desktop.StatusText = "Move the rectangle into position and left-click...";
 
     Rectangle rect = world.ExpandRect(WindowToWorld(selected.Rect));
@@ -533,13 +535,14 @@ class WorldDisplay : Control
   }
 
   public void ShowObjectProperties()
-  { if(selected.Objs.Count>1) App.Desktop.StatusText = "Too many objects selected.";
-    else if(selected.Objs.Count==0) App.Desktop.StatusText = "No object selected.";
+  { int num = selected.Objs.Count;
+    if(num==0) App.Desktop.StatusText = "No object selected.";
+    if(num>1) App.Desktop.StatusText = "Too many objects selected.";
     else
     { if(selected.Obj.Type.Properties.Length>0)
       { ObjectProperties props = new ObjectProperties(selected.Obj);
         if(props.Show(Desktop)) Invalidate(selected.Obj);
-        SelectObject(selected.Obj); // just to update the text
+        UpdateObjectText();
       }
       else App.Desktop.StatusText = "Object '" + selected.Obj.Name + "' has no editable properties.";
     }
@@ -638,9 +641,7 @@ class WorldDisplay : Control
         if(subMode==SubMode.NewPoly)
         { if(Keyboard.HasOnlyKeys(KeyMod.Shift) && selected.Poly.Points.Length>0)
           { Point last = selected.Poly.Points[selected.Poly.Points.Length-1];
-            int xd = Math.Abs(e.CE.X-last.X), yd = Math.Abs(e.CE.Y-last.Y);
-            if(yd>xd) e.CE.X=last.X;
-            else e.CE.Y=last.Y;
+            e.CE.Point = AlignPoints(e.CE.Point, last);
           }
           selected.Poly.AddPoint(e.CE.Point);
           Invalidate(selected.Poly);
@@ -660,7 +661,8 @@ class WorldDisplay : Control
         { Object obj = new Object(SelectedType);
           e.CE.X -= obj.Width/2;
           e.CE.Y -= obj.Height/2;
-          obj.Location = e.CE.Point;
+          obj.Location = Keyboard.HasOnlyKeys(KeyMod.Shift) ? AlignPoints(e.CE.Point, lastPoint) : e.CE.Point;
+          lastPoint = obj.Location;
           world.Layers[layer].Objects.Add(obj);
           world.ChangedSinceSave = true;
           SelectObject(obj);
@@ -767,7 +769,7 @@ class WorldDisplay : Control
   { Point pt = WindowToWorld(e.Start);
     if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None || subMode==SubMode.NewPoly)
-      { if(e.OnlyPressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt)))
+      { if(e.OnlyPressed(MouseButton.Left) && (subMode==SubMode.NewPoly ? ClickVertex(pt) : ClickPolygon(pt, true)))
         { oldSubMode=subMode;
           subMode=SubMode.DragSelected;
           goto done;
@@ -778,7 +780,7 @@ class WorldDisplay : Control
         }
       }
     }
-    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt))
+    else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, true))
     { subMode=SubMode.DragSelected;
       goto done;
     }
@@ -817,8 +819,14 @@ class WorldDisplay : Control
         subMode = SubMode.None;
         if(selectMode==SelectMode.None)
         { selected.Rect = WindowToWorld(selected.Rect);
-          if(editMode==EditMode.Objects) SelectObjects(selected.Rect);
-          else if(editMode==EditMode.Polygons) SelectPolygons(selected.Rect);
+          if(editMode==EditMode.Objects)
+          { if(!Keyboard.HasAnyMod(KeyMod.Shift)) SelectObject(null);
+            SelectObjects(selected.Rect);
+          }
+          else if(editMode==EditMode.Polygons)
+          { if(!Keyboard.HasAnyMod(KeyMod.Shift)) SelectPolygon(null);
+            SelectPolygons(selected.Rect);
+          }
         }
         else selectMode = SelectMode.Done;
         Invalidate();
@@ -857,7 +865,7 @@ class WorldDisplay : Control
       set
       { if(Objs.Count!=1 || Objs[0]!=value)
         { Objs.Clear();
-          Objs.Add(value);
+          if(value!=null) Objs.Add(value);
         }
       }
     }
@@ -870,7 +878,7 @@ class WorldDisplay : Control
       set
       { if(Polys.Count!=1 || Polys[0]!=value)
         { Polys.Clear();
-          Polys.Add(value);
+          if(value!=null) Polys.Add(value);
         }
       }
     }
@@ -880,6 +888,13 @@ class WorldDisplay : Control
   }
 
   #region Private methods
+  Point AlignPoints(Point newPoint, Point oldPoint)
+  { int xd = Math.Abs(newPoint.X-oldPoint.X), yd = Math.Abs(newPoint.Y-oldPoint.Y);
+    if(yd>xd) newPoint.X=oldPoint.X;
+    else newPoint.Y=oldPoint.Y;
+    return newPoint;
+  }
+
   bool ClickVertex(Point point)
   { point = WorldToWindow(point);
     foreach(Polygon poly in world.Polygons)
@@ -897,19 +912,23 @@ class WorldDisplay : Control
     return false;
   }
 
-  bool ClickObject(Point point)
+  bool ClickObject(Point point) { return ClickObject(point, false); }
+  bool ClickObject(Point point, bool alwaysAdd)
   { foreach(Object obj in world.Layers[layer].Objects)
       if(obj.Bounds.Contains(point))
-      { if(!selected.Objs.Contains(obj))
+      { if(!alwaysAdd && !Keyboard.HasAnyMod(KeyMod.Shift)) SelectObject(null);
+        if(!selected.Objs.Contains(obj))
         { selected.Objs.Add(obj);
           Invalidate(obj);
+          UpdateObjectText();
         }
         return true;
       }
     return false;
   }
 
-  bool ClickPolygon(Point point)
+  bool ClickPolygon(Point point) { return ClickPolygon(point, false); }
+  bool ClickPolygon(Point point, bool alwaysAdd)
   { if(ClickVertex(point)) return true;
     selectedPoint = -1;
     foreach(Polygon poly in world.Polygons)
@@ -917,7 +936,8 @@ class WorldDisplay : Control
       { try
         { foreach(GameLib.Mathematics.TwoD.Polygon glcvPoly in poly.ToGLPolygon().SplitIntoConvexPolygons())
             if(glcvPoly.ConvexContains(point))
-            { if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
+            { if(!alwaysAdd && !Keyboard.HasAnyMod(KeyMod.Shift)) SelectPolygon(null);
+              if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
               Invalidate(poly);
               return true;
             }
@@ -965,7 +985,7 @@ class WorldDisplay : Control
       { Point pos = obj.Location;
         pos.Offset(xd, yd);
         Invalidate(obj);
-        obj.Location = pos;
+        obj.Location = lastPoint = pos;
         Invalidate(obj);
       }
       if(zoom==ZoomMode.Full) { e.Start.X += xd*4; e.Start.Y += yd*4; }
@@ -1016,16 +1036,7 @@ class WorldDisplay : Control
       selected.Obj = obj;
       if(obj!=null) Invalidate(obj);
     }
-    if(obj==null) App.Desktop.StatusText="";
-    else
-    { string text = obj.Name;
-      Property[] props = obj.Type.Properties;
-      for(int i=0; i<props.Length; i++)
-      { text += (i==0 ? ':' : ',');
-        text += " "+props[i].Name+'='+obj[props[i].Name];
-      }
-      App.Desktop.StatusText = text;
-    }
+    UpdateObjectText();
   }
 
   void SelectObjects(Rectangle rect)
@@ -1033,6 +1044,15 @@ class WorldDisplay : Control
     { Point pt = obj.Location;
       pt.Offset(obj.Width/2, obj.Height/2);
       if(rect.Contains(pt) && !selected.Objs.Contains(obj)) selected.Objs.Add(obj);
+    }
+    UpdateObjectText();
+  }
+
+  void SelectPolygon(Polygon poly)
+  { if(selected.Polys.Count==1 && selected.Poly!=poly || !selected.Polys.Contains(poly))
+    { InvalidatePolys();
+      selected.Poly = poly;
+      if(poly!=null) Invalidate(poly);
     }
   }
 
@@ -1045,14 +1065,33 @@ class WorldDisplay : Control
   { bool dontQuit=true;
     selectMode = SelectMode.Selecting;
 
-    App.Desktop.StatusText = "Select the rectangle to " + action + "...";
-    while(selectMode==SelectMode.Selecting && (dontQuit=GameLib.Events.Events.PumpEvent()));
-    if(selectMode==SelectMode.None || !dontQuit) goto abort;
-    return true;
+    try
+    { App.Desktop.StatusText = "Select the rectangle to " + action + "...";
+      while(selectMode==SelectMode.Selecting && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(selectMode==SelectMode.None || !dontQuit) goto abort;
+      return true;
 
-    abort:
-    App.Desktop.StatusText = "Selection cancelled.";
-    return false;
+      abort:
+      App.Desktop.StatusText = "Selection cancelled.";
+      return false;
+    }
+    finally { selectMode=SelectMode.None; }
+  }
+
+  void UpdateObjectText()
+  { int num = selected.Objs.Count;
+    if(num==0) App.Desktop.StatusText = "";
+    else if(num>1) App.Desktop.StatusText = num.ToString()+" objects selected.";
+    else
+    { Object obj = selected.Obj;
+      string text = obj.Name;
+      Property[] props = obj.Type.Properties;
+      for(int i=0; i<props.Length; i++)
+      { text += (i==0 ? ':' : ',');
+        text += " "+props[i].Name+'='+obj[props[i].Name];
+      }
+      App.Desktop.StatusText = text;
+    }
   }
 
   Point WindowToWorld(Point windowPoint)
@@ -1090,7 +1129,7 @@ class WorldDisplay : Control
   World world = new World();
   EventHandler typeSel;
   Selection selected = new Selection();
-  Point mousePoint;
+  Point mousePoint, lastPoint;
   int x, y, layer, selectedPoint;
   EditMode editMode;
   SubMode  subMode, oldSubMode;
@@ -1373,6 +1412,10 @@ class ObjectProperties : Form
           { if(prop.Type=="color")
             { Color c = (Color)obj[prop.Name];
               tb.Text = string.Format("{0},{1},{2}", c.R, c.G, c.B);
+            }
+            else if(prop.Type=="numPair")
+            { List list = (List)obj[prop.Name];
+              tb.Text = string.Format("{0},{1}", list[0], list[1]);
             }
             else tb.Text = obj[prop.Name].ToString();
           }
