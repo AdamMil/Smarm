@@ -37,24 +37,6 @@ class App
     }
   }
 
-  static void SetMode(int width, int height)
-  { Video.SetMode(width, height, 32, fullscreen ? SurfaceFlag.Fullscreen : SurfaceFlag.Resizeable);
-    desktop.Surface = Video.DisplaySurface;
-    desktop.Bounds  = Video.DisplaySurface.Bounds;
-    desktop.Invalidate();
-  }
-
-  static void Main()
-  { WM.WindowTitle = "Smarm "+Version;
-    desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"arial.ttf", 12);
-
-    Video.Initialize();
-    SetMode(640, 480);
-
-    Events.Initialize();
-    Events.PumpEvents(new EventProcedure(EventProc));
-  }
-
   static bool EventProc(Event e)
   { if(desktop.ProcessEvent(e) != FilterAction.Drop)
     { if(e is RepaintEvent) Video.Flip();
@@ -70,6 +52,24 @@ class App
       desktop.Updated=false;
     }
     return true;
+  }
+
+  static void Main()
+  { WM.WindowTitle = "Smarm "+Version;
+    desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"arial.ttf", 12);
+
+    Video.Initialize();
+    SetMode(640, 480);
+
+    Events.Initialize();
+    Events.PumpEvents(new EventProcedure(EventProc));
+  }
+
+  static void SetMode(int width, int height)
+  { Video.SetMode(width, height, 32, fullscreen ? SurfaceFlag.Fullscreen : SurfaceFlag.Resizeable);
+    desktop.Surface = Video.DisplaySurface;
+    desktop.Bounds  = Video.DisplaySurface.Bounds;
+    desktop.Invalidate();
   }
 
   static SmarmDesktop desktop = new SmarmDesktop();

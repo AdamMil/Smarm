@@ -67,9 +67,12 @@ class TopBar : ContainerControl
     lblZoom.Menu.Add(new MenuItem("Render size (0.5x)", 'R'));
     lblZoom.Menu.Add(new MenuItem("Full size (1x)", 'F'));
     
-    lblMode.Menu = new Menu();
-    lblMode.Menu.Add(new MenuItem("Objects", 'O'));
-    lblMode.Menu.Add(new MenuItem("Polygons", 'P'));
+    { EventHandler click = new EventHandler(mode_OnClick);
+      lblMode.Menu = new Menu();
+      lblMode.Menu.Add(new MenuItem("Objects", 'O')).Click += click;
+      lblMode.Menu.Add(new MenuItem("Polygons", 'P')).Click += click;
+      lblMode.Menu.Add(new MenuItem("View only", 'V')).Click += click;
+    }
 
     foreach(object o in new MenuBase[] { fileMenu, editMenu, viewMenu, lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
     { Menu menu = (Menu)o;
@@ -101,8 +104,8 @@ class TopBar : ContainerControl
     lblLayer.Anchor = lblMouse.Anchor = lblMode.Anchor = lblZoom.Anchor = AnchorStyle.TopRight;
 
     lblLayer.Text = "Layer 0";
-    lblMouse.Text = "1274x763";
-    lblMode.Text  = "Mode: Obj";
+    lblMouse.Text = "0x0";
+    lblMode.Text  = "Mode: View";
     lblZoom.Text  = "Zoom: Full";
     Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, btnFile, btnEdit, btnView);
     #endregion
@@ -130,10 +133,7 @@ class TopBar : ContainerControl
   }
 
   void New()
-  { if(CanUnloadLevel())
-    { App.Desktop.World.Clear();
-      App.Desktop.WorldDisplay.Invalidate();
-    }
+  { if(CanUnloadLevel()) App.Desktop.World.Clear();
   }
 
   void Load()
@@ -150,8 +150,6 @@ class TopBar : ContainerControl
                                                         e.Message));
         App.Desktop.StatusText = file+" failed to load.";
       }
-
-      App.Desktop.WorldDisplay.Invalidate();
     }
   }
 
@@ -175,7 +173,7 @@ class TopBar : ContainerControl
   }
   
   bool CanUnloadLevel()
-  { if(App.Desktop.World.ChangedSinceSave)
+  { if(App.Desktop.World.World.ChangedSinceSave)
     { int button = MessageBox.Show(Desktop, "Save changes?", "This level has been altered. Save changes?",
                                    MessageBoxButtons.YesNoCancel);
       if(button==0) return Save();
@@ -224,6 +222,15 @@ class TopBar : ContainerControl
     Menu menu = (Menu)sender;
     menu.Controls[1].Text = "Toggle Antialiasing ("+(font.RenderStyle==GameLib.Fonts.RenderStyle.Shaded ? "on" : "off")+')';
   }
+  
+  void mode_OnClick(object sender, EventArgs e)
+  { MenuItemBase item = (MenuItemBase)sender;
+    switch(item.HotKey)
+    { case 'O': App.Desktop.World.EditMode = EditMode.Objects;  lblMode.Text = "Mode: Obj";  break;
+      case 'P': App.Desktop.World.EditMode = EditMode.Polygons; lblMode.Text = "Mode: Poly"; break;
+      case 'V': App.Desktop.World.EditMode = EditMode.ViewOnly; lblMode.Text = "Mode: View"; break;
+    }
+  }
   #endregion
 
   const int lblWidth=64, lblHeight=16, lblPadding=6;
@@ -260,22 +267,168 @@ class BottomBar : ContainerControl
 #endregion
 
 #region WorldDisplay
+enum EditMode { Objects, Polygons, ViewOnly };
 class WorldDisplay : Control
-{ public World World { get { return world; } }
+{ public WorldDisplay() { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus; }
+
+  public EditMode EditMode
+  { get { return editMode; }
+    set
+    { if(value!=editMode)
+      { subMode=SubMode.None;
+        editMode=value;
+        Invalidate();
+      }
+    }
+  }
+
+  public World World { get { return world; } }
+
+  public void Clear() { world.Clear(); x=y=0; Invalidate(); }
+  public void Load(string directory) { world.Load(directory); x=y=0; Invalidate(); }
 
   protected override void OnPaint(PaintEventArgs e)
   { base.OnPaint(e);
-    GameLib.Fonts.Font font = Font;
-    font.Color = ForeColor;
-    font.BackColor = BackColor;
-    Font.Render(e.Surface, "World goes here", DisplayRect, ContentAlignment.MiddleCenter);
+    world.Render(e.Surface, x+e.WindowRect.X, y+e.WindowRect.Y, e.DisplayRect);
+    if(editMode==EditMode.Polygons)
+    { int xoff=Left-x, yoff=Top-y;
+      foreach(Polygon poly in world.Polygons)
+      { Color c = poly==selectedPoly ? Color.FromArgb(0, 255, 0) : Color.FromArgb(0, 192, 0);
+        Point lp = new Point();
+        for(int i=0; i<poly.Points.Length; i++)
+        { Point p2 = new Point(poly.Points[i].X+xoff, poly.Points[i].Y+yoff);
+          Primitives.Box(e.Surface, p2.X-1, p2.Y-1, p2.X+1, p2.Y+1, c);
+          if(i>0) Primitives.Line(e.Surface, lp, p2, c);
+          lp = p2;
+        }
+        if(poly.Points.Length>2)
+          Primitives.Line(e.Surface, lp.X, lp.Y, poly.Points[0].X+xoff, poly.Points[0].Y+yoff, c);
+      }
+    }
   }
 
   protected override void OnMouseMove(GameLib.Events.MouseMoveEvent e)
-  { App.Desktop.TopBar.MouseText=e.X.ToString()+'x'+e.Y.ToString();
+  { if(!Focused) Focus();
+    App.Desktop.TopBar.MouseText=(x+e.X).ToString()+'x'+(y+e.Y).ToString();
+    base.OnMouseMove(e);
   }
   
+  protected override void OnMouseClick(ClickEventArgs e)
+  { if(editMode==EditMode.Polygons)
+    { if(e.CE.Button==0)
+      { if(subMode==SubMode.None)
+        { selectedPoly = new Polygon();
+          world.Polygons.Add(selectedPoly);
+          subMode = SubMode.NewPoly;
+        }
+        selectedPoly.AddPoint(new Point(e.CE.X+x, e.CE.Y+y));
+        Invalidate();
+        e.Handled = true;
+      }
+      else if(e.CE.Button==1 && subMode==SubMode.NewPoly)
+      { selectedPoly.RemoveLastPoint();
+        Invalidate();
+      }
+    }
+    base.OnMouseClick(e);
+  }
+
+  protected override void OnKeyDown(KeyEventArgs e)
+  { if(editMode==EditMode.Polygons)
+    { if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
+      else if(subMode==SubMode.NewPoly)
+      { if(e.KE.Key==Key.Backspace)
+        { if(selectedPoly.Points.Length==1) RemoveSelectedPoly();
+          else selectedPoly.RemoveLastPoint();
+          Invalidate();
+        }
+        else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+        { selectedPoly = null;
+          subMode = SubMode.None;
+          Invalidate();
+        }
+        else if(e.KE.Key==Key.Escape) RemoveSelectedPoly();
+      }
+    }
+    base.OnKeyDown(e);
+  }
+  
+  protected override void OnDragStart(DragEventArgs e)
+  { if(editMode==EditMode.ViewOnly)
+    { if(e.Buttons != 4) e.Cancel=true;
+    }
+    else if(editMode==EditMode.Polygons)
+    { if(subMode==SubMode.None)
+      { if(e.Buttons==1)
+        { e.Start.X += x;
+          e.Start.Y += y;
+          foreach(Polygon poly in world.Polygons)
+            for(int i=0; i<poly.Points.Length; i++)
+            { Point pt = poly.Points[i];
+              if(e.Start.X>=pt.X-1 && e.Start.X<=pt.X+1 && e.Start.Y>=pt.Y-1 && e.Start.Y<=pt.Y+1)
+              { selectedPoly = poly;
+                selectedPoint = i;
+                subMode = SubMode.DragPoint;
+                goto done;
+              }
+            }
+          e.Cancel=true;
+        }
+        if(e.Buttons != 4) e.Cancel=true;
+      }
+      else if(e.Buttons != 4) e.Cancel=true;
+    }
+    done:
+    base.OnDragStart(e);
+  }
+  
+  protected override void OnDragMove(DragEventArgs e)
+  { if(e.Buttons==4) DragScroll(e);
+    else if(e.Buttons==1 && editMode==EditMode.Polygons && subMode==SubMode.DragPoint) DragPoint(e);
+    base.OnDragMove(e);
+  }
+  protected override void OnDragEnd(DragEventArgs e)
+  { if(e.Buttons==4) DragScroll(e);
+    else if(e.Buttons==1 && editMode==EditMode.Polygons && subMode==SubMode.DragPoint)
+    { DragPoint(e);
+      subMode = SubMode.None;
+    }
+    base.OnDragEnd(e);
+  }
+
+  enum SubMode { None, NewPoly, DragPoint };
+
+  void DragScroll(DragEventArgs e)
+  { x -= e.End.X-e.Start.X;
+    y -= e.End.Y-e.Start.Y;
+    if(x<0) x=0;
+    else if(x>world.Width-Width) x=world.Width-Width;
+    if(y<0) y=0;
+    else if(y>world.Height-Height) y=world.Height-Height;
+    e.Start = e.End;
+    Invalidate();
+  }
+  
+  void DragPoint(DragEventArgs e)
+  { e.End.X += x; e.End.Y += y;
+    selectedPoly.Points[selectedPoint].X += e.End.X-e.Start.X;
+    selectedPoly.Points[selectedPoint].Y += e.End.Y-e.Start.Y;
+    e.Start = e.End;
+    Invalidate();
+  }
+  
+  void RemoveSelectedPoly()
+  { world.Polygons.Remove(selectedPoly);
+    selectedPoly = null;
+    Invalidate();
+    subMode = SubMode.None;
+  }
+
   World world = new World();
+  int x, y, selectedPoint;
+  EditMode editMode;
+  SubMode  subMode;
+  Polygon  selectedPoly;
 }
 #endregion
 
@@ -436,18 +589,19 @@ class SmarmDesktop : DesktopControl
     ForeColor    = Color.White;
     BackColor    = Color.Black;
     Controls.AddRange(topBar, bottomBar, world);
+    world.Focus();
   }
 
   public TopBar TopBar { get { return topBar; } }
   public string StatusText { get { return bottomBar.StatusText; } set { bottomBar.StatusText=value; } }
-  public World World { get { return world.World; } }
-  public WorldDisplay WorldDisplay { get { return world; } }
+  public WorldDisplay World { get { return world; } }
 
   protected override void OnKeyPress(KeyEventArgs e)
   { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt))
     { e.Handled = true;
       if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
-      { if(enterKey==Key.None) { enterKey=e.KE.Key; App.Fullscreen = !App.Fullscreen; }
+      { StopKeyRepeat();
+        App.Fullscreen = !App.Fullscreen;
       }
       else if(char.ToUpper(e.KE.Char)=='F') topBar.OpenFileMenu();
       else if(char.ToUpper(e.KE.Char)=='E') topBar.OpenEditMenu();
@@ -455,8 +609,6 @@ class SmarmDesktop : DesktopControl
       else e.Handled = false;
     }
   }
-
-  protected override void OnKeyUp(KeyEventArgs e) { if(e.KE.Key==enterKey) enterKey=Key.None; }
 
   protected override void OnResize(EventArgs e)
   { topBar.Bounds = new Rectangle(0, 0, Width, 32);
@@ -468,7 +620,6 @@ class SmarmDesktop : DesktopControl
   TopBar topBar = new TopBar();
   BottomBar bottomBar = new BottomBar();
   WorldDisplay world = new WorldDisplay();
-  Key enterKey=Key.None;
 }
 #endregion
 
