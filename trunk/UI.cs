@@ -182,7 +182,9 @@ class TopBar : ContainerControl
     string file = FileChooser.Save(Desktop, FileType.Directory);
     if(file=="") MessageBox.Show(Desktop, "Aborted", "Compilation aborted.");
     else if(MessageBox.Show(Desktop, "Compile?", "Compile level into '"+file+"'?", MessageBoxButtons.YesNo)==0)
-      App.Desktop.World.Save(file, true);
+    { App.Desktop.World.Save(file, true);
+      App.Desktop.StatusText = "Level compiled into "+file+".";
+    }
   }
 
   public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
@@ -491,8 +493,9 @@ class WorldDisplay : Control
     { if(e.CE.Button==0)
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(subMode==SubMode.None)
-        { if(!ClickVertex(e.CE.Point))
-          { selectedPoly = new Polygon(SelectedType);
+        { if(Keyboard.HasOnlyKeys(KeyMod.Shift) || !ClickVertex(e.CE.Point))
+          { if(selectedPoly!=null) Invalidate(selectedPoly);
+            selectedPoly = new Polygon(SelectedType);
             world.Polygons.Add(selectedPoly);
             subMode = SubMode.NewPoly;
           }

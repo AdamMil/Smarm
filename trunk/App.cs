@@ -79,6 +79,7 @@ class App
     desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
     desktop.World.Clear(); // start a new level
 
+    GameLib.Input.Input.Initialize();
     Video.Initialize();
     SetMode(640, 480);
 

@@ -78,9 +78,9 @@ class World : IDisposable
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    else foreach(string fn in Directory.GetFiles(path, "clayer*.png")) File.Delete(fn);
+    else foreach(string fn in Directory.GetFiles(path, "layer*.png")) File.Delete(fn);
 
-    StreamWriter writer = new StreamWriter(path+"definition");
+    StreamWriter writer = new StreamWriter(path+"world.lev");
     writer.WriteLine("(world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
     for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, null, i, true);
