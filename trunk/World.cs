@@ -1,7 +1,26 @@
+/*
+Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
+http://www.adammil.net
+Copyright (C) 2003-2004 Adam Milazzo
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+*/
+
 using System;
 using System.Collections;
 using System.Drawing;
 using System.IO;
+using ICSharpCode.SharpZipLib.Zip;
 
 namespace Smarm
 {
@@ -53,6 +72,24 @@ class World : IDisposable
     changed=false;
   }
 
+  public void Compile(string directory)
+  { string path = directory;
+    path.Replace('\\', '/');
+    if(path[path.Length-1] != '/') path += '/';
+
+    if(!Directory.Exists(path)) Directory.CreateDirectory(path);
+    else foreach(string fn in Directory.GetFiles(path, "clayer*.png")) File.Delete(fn);
+
+    StreamWriter writer = new StreamWriter(path+"definition");
+    writer.WriteLine("(world");
+    writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
+    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, null, i, true);
+    foreach(Polygon poly in polygons) poly.Save(writer);
+    writer.Write(')');
+    writer.Close();
+    changed = false;
+  }
+
   public void Dispose()
   { Clear();
     GC.SuppressFinalize(this);
@@ -66,6 +103,7 @@ class World : IDisposable
     path.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
     FileStream fs = File.Open(path+"definition", FileMode.Open, FileAccess.Read);
+    ZipFile zip = new ZipFile(path+"images.zip");
 
     try
     { Clear();
@@ -73,7 +111,7 @@ class World : IDisposable
       if(level.Contains("bgcolor")) backColor = level["bgcolor"].ToColor();
       foreach(List list in level)
       { if(list.Name=="layer")
-        { Layer layer = new Layer(list, path);
+        { Layer layer = new Layer(list, zip);
           int z = list.GetInt(0);
           if(z+1>layers.Length) AddLayer(layer);
           else layers[z] = layer;
@@ -81,7 +119,7 @@ class World : IDisposable
         else if(list.Name=="polygon") polygons.Add(new Polygon(list));
       }
     }
-    finally { fs.Close(); }
+    finally { fs.Close(); zip.Close(); }
   }
 
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom)
@@ -92,21 +130,24 @@ class World : IDisposable
       layers[i].Render(dest, sx, sy, drect, zoom, layer==AllLayers || layer==i, hilite);
   }
 
-  public void Save(string directory, bool compile)
+  public void Save(string directory)
   { string path = directory;
     path.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    else foreach(string fn in Directory.GetFiles(path, compile ? "clayer*.png" : "layer*.png")) File.Delete(fn);
+    ZipOutputStream zip = new ZipOutputStream(File.Open(path+"images.zip", FileMode.Create));
+    zip.SetLevel(5);
 
     StreamWriter writer = new StreamWriter(path+"definition");
     writer.WriteLine("(smarm-world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
-    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, backColor, i, compile);
+    for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, zip, i, false);
     foreach(Polygon poly in polygons) poly.Save(writer);
     writer.Write(')');
     writer.Close();
+    zip.Finish();
+    zip.Close();
     changed = false;
   }
 
