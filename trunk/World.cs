@@ -92,8 +92,7 @@ class World : IDisposable
       foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in cvPolys)
       { if(!cvPoly.IsClockwise()) cvPoly.Reverse();
         Polygon newPoly = new Polygon(poly.Type);
-        for(int i=0; i<cvPoly.Length; i++)
-          newPoly.AddPoint(new Point((int)Math.Round(cvPoly[i].X), (int)Math.Round(cvPoly[i].Y)));
+        for(int i=0; i<cvPoly.Length; i++) newPoly.AddPoint(cvPoly[i].ToPoint());
         newPoly.Save(writer);
       }
       ccPoly.Clear();
