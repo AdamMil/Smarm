@@ -159,7 +159,7 @@ class World : IDisposable
     { if(layer.Width==0) codec.WriteLayer(null);
       else
       { surface.Fill(0);
-        layer.Render(surface, rect.X*4, rect.Y*4, surface.Bounds, ZoomMode.Full, false, null, false);
+        layer.Render(surface, rect.X*4, rect.Y*4, surface.Bounds, ZoomMode.Full, true, false, null, false);
         codec.WriteLayer(surface);
       }
     }
@@ -287,9 +287,14 @@ class World : IDisposable
   }
   
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
-                     int objectLayer, Object[] hilite)
-  { for(int i=0; i<layers.Length; i++)
-      layers[i].Render(dest, sx, sy, drect, zoom, objectLayer==AllLayers || objectLayer==i, hilite, true);
+                     int tileLayer, int objectLayer, Object[] hilite)
+  { if(tileLayer==-1)
+      for(int i=0; i<layers.Length; i++)
+        layers[i].Render(dest, sx, sy, drect, zoom, true, objectLayer==AllLayers || objectLayer==i, hilite, true);
+    else
+      for(int i=0; i<layers.Length; i++)
+        layers[i].Render(dest, sx, sy, drect, zoom, i==tileLayer,
+                         objectLayer==AllLayers || objectLayer==i, hilite, true);
   }
 
   public void Save(string directory)
