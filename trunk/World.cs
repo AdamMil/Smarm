@@ -187,11 +187,14 @@ class World : IDisposable
           { int n = int.Parse(layer.Name.Substring(6));
             codec.ReadNextLayer();
 
-            surface.Fill(0);
-            layer.Surface.UsingAlpha = false;
-            layer.Surface.Blit(surface, layer.Location);
-            layer.Surface.Dispose();
-            layers[n].InsertSurface(surface, exp.Rect.X*4, exp.Rect.Y*4);
+            if(layer.Surface!=null)
+            { surface.Fill(0);
+              layer.Surface.UsingAlpha = false;
+              layer.Surface.Blit(surface, layer.Location);
+              layer.Surface.Dispose();
+              layers[n].InsertSurface(surface, exp.Rect.X*4, exp.Rect.Y*4);
+            }
+            else if(layers[n].Width!=0) layers[n].ClearTiles(exp.Rect);
             changed = true;
           }
           catch { codec.SkipLayer(); }

@@ -96,9 +96,7 @@ class App
   }
 
   static void Main()
-  { PSDImage image = PSDCodec.ReadPSD("c:/smarm0.psd");
-
-    WM.WindowTitle = "Smarm "+Version;
+  { WM.WindowTitle = "Smarm "+Version;
     desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
     desktop.World.Clear(); // start a new level
     PropertiesUpdated();

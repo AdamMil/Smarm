@@ -61,6 +61,12 @@ class Layer : IDisposable
     width = height = 0;
   }
 
+  public void ClearTiles(Rectangle rect)
+  { Clear(full, rect.X*4, rect.Y*4, rect.Width*4, rect.Height*4);
+    Clear(fourth, rect.X, rect.Y, rect.Width, rect.Height);
+    Clear(sixteenth, rect.X/4, rect.Y/4, rect.Width/4, rect.Height/4);
+  }
+
   public void InsertSurface(Surface s, int fx, int fy)
   { InsertSurface(s, fx, fy, ZoomMode.Full, true);
     SyncScaledSizes(); // if the insertion enlarged the world size, enlarge the scaled arrays to match
