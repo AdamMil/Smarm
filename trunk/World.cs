@@ -79,7 +79,7 @@ class World : IDisposable
     Color backColor = BackColor;
     StreamWriter writer = new StreamWriter(path+"world.lev");
     writer.WriteLine("(world");
-    writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
+    writer.WriteLine("  (bgcolor (color {0} {1} {2}))", backColor.R, backColor.G, backColor.B);
     for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, null, i, true);
 
     GameLib.Mathematics.TwoD.Polygon ccPoly = new GameLib.Mathematics.TwoD.Polygon();
