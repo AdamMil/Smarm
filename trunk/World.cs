@@ -65,7 +65,7 @@ class World : IDisposable
     string path = directory;
     path.Replace('\\', '/');
     if(path[path.Length-1] != '/') path += '/';
-    FileStream fs = File.Open(path+"definition", FileMode.Open);
+    FileStream fs = File.Open(path+"definition", FileMode.Open, FileAccess.Read);
 
     try
     { Clear();
@@ -98,7 +98,7 @@ class World : IDisposable
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    else foreach(string fn in Directory.GetFiles(path, compile ? "clayer*.png" : "layer*.png")) File.Delete(path+fn);
+    else foreach(string fn in Directory.GetFiles(path, compile ? "clayer*.png" : "layer*.png")) File.Delete(fn);
 
     StreamWriter writer = new StreamWriter(path+"definition");
     writer.WriteLine("(smarm-world");

@@ -22,24 +22,32 @@ class Layer : IDisposable
 
   public void Clear()
   { objects = new ArrayList();
-    if(surfaces!=null)
-      for(int x=0; x<width; x++)
-        for(int y=0; y<height; y++)
-          if(surfaces[y, x]!=null) { surfaces[y, x].Dispose(); surfaces[y, x]=null; }
-    surfaces = new Surface[32, 32];
+    foreach(Surface[,] surfaces in new Surface[][,] { full, fourth, sixteenth })
+      if(surfaces!=null)
+        for(int y=0; y<surfaces.GetLength(0); y++)
+          for(int x=0; x<surfaces.GetLength(1); x++)
+            if(surfaces[y, x]!=null) { surfaces[y, x].Dispose(); surfaces[y, x]=null; }
+    full = new Surface[32, 32];
+    fourth = new Surface[8, 8];
+    sixteenth = new Surface[2, 2];
     width = height = 0;
    }
 
-  public void InsertSurface(Surface s, int x, int y)
+  public void InsertSurface(Surface s, int x, int y, ZoomMode zoom)
   { s = s.CloneDisplay();
+    int ox=x, oy=y;
     int bx=x/PartWidth, by=y/PartHeight, bw=(s.Width+PartWidth-1)/PartWidth, bh=(s.Height+PartHeight-1)/PartHeight;
     x %= PartWidth; y %= PartHeight;
+    Surface[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     if(bx+bw>surfaces.GetLength(1) || by+bh>surfaces.GetLength(0))
     { Surface[,] narr = new Surface[Math.Max(bx+bw, surfaces.GetLength(1)*2), Math.Max(by+bh, surfaces.GetLength(0))];
       for(int yi=0; yi<height; yi++)
         Array.Copy(surfaces, yi*surfaces.GetLength(1), narr, yi*narr.GetLength(1), width);
-      surfaces = narr;
-    }      
+      if(zoom==ZoomMode.Full) full=narr;
+      else if(zoom==ZoomMode.Normal) fourth=narr;
+      else sixteenth=narr;
+      surfaces=narr;
+    }
 
     s.UsingAlpha = false; // copy alpha information. don't blend.
     for(int xi=0, sx=0; xi<bw; xi++)
@@ -57,12 +65,18 @@ class Layer : IDisposable
       }
       sx += xi==0 ? PartWidth-x : PartWidth;
     }
+    
+    if(s.Width>1 && s.Height>1)
+      if(zoom==ZoomMode.Full) InsertSurface(ScaleDown(s), ox/4, oy/4, ZoomMode.Normal);
+      else if(zoom==ZoomMode.Normal) InsertSurface(ScaleDown(s), ox/4, oy/4, ZoomMode.Tiny);
   }
 
   public void Render(Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom, bool renderObjects, Object hilite)
-  { int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight;
+  { sx /= (int)zoom; sy /= (int)zoom;
+    int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight, width=this.width/(int)zoom, height=this.height/(int)zoom;
     sx %= PartWidth; sy %= PartHeight;
 
+    Surface[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     for(int xi=0, dx=drect.X; dx<drect.Right; xi++)
     { if(bx+xi>width) break;
       if(bx+xi>=0)
@@ -79,7 +93,7 @@ class Layer : IDisposable
       dx += xi==0 ? PartWidth-sx : PartWidth;
     }
     
-    if(renderObjects)
+    if(zoom==ZoomMode.Normal && renderObjects)
       foreach(Object o in objects)
       { Rectangle bounds = o.Bounds;
         bounds.Offset(drect.X-osx, drect.Y-osy);
@@ -91,8 +105,11 @@ class Layer : IDisposable
   { string header = string.Format("  (layer {0}", layerNum);
     int img=0;
     bool tiles=false;
-    for(int x=0; x<width; x++)
-      for(int y=0; y<height; y++)
+
+    Surface[,] surfaces = compile ? fourth : full;
+
+    for(int x=0; x<surfaces.GetLength(1); x++)
+      for(int y=0; y<surfaces.GetLength(0); y++)
         if(surfaces[y, x]!=null && NotEmpty(surfaces[y, x], backColor))
         { string fn = (compile ? "clayer" : "layer") + layerNum + '_' + img++ + ".png";
           if(!tiles)
@@ -101,9 +118,9 @@ class Layer : IDisposable
             tiles=true;
           }
           writer.WriteLine("      (tile \"{0}\" (pos {1} {2}))", fn, x*PartWidth, y*PartHeight);
-          if(compile) throw new NotImplementedException("compile not implemented");
-          else surfaces[y, x].Save(path+fn, ImageType.PNG);
+          surfaces[y, x].Save(path+fn, ImageType.PNG);
         }
+
     if(tiles) writer.WriteLine("    )");
     else
     { if(objects.Count==0) return;
@@ -129,7 +146,7 @@ class Layer : IDisposable
       foreach(List image in tiles)
       { Surface surf = new Surface(basePath+image.GetString(0));
         List pos = image["pos"];
-        InsertSurface(surf, pos.GetInt(0), pos.GetInt(1));
+        InsertSurface(surf, pos.GetInt(0), pos.GetInt(1), ZoomMode.Full);
       }
   }
   
@@ -142,11 +159,28 @@ class Layer : IDisposable
       }
     return false;
   }
+  
+  Surface ScaleDown(Surface s)
+  { Surface ret = new Surface((s.Width+2)/4, (s.Height+2)/4, s.Format);
+    for(int y=0; y<ret.Height; y++)
+      for(int x=0; x<ret.Width; x++)
+      { int a=0, r=0, g=0, b=0, n=0, nh;
+        for(int osx=x*4,sxe=Math.Min(osx+4, s.Width),sy=y*4,sye=Math.Min(sy+4, s.Height); sy<sye; sy++)
+          for(int sx=osx; sx<sxe; n++,sx++)
+          { Color c = s.GetPixel(sx, sy);
+            a+=c.A; r+=c.R; g+=c.G; b+=c.B;
+          }
+        nh=n/2;
+        a=Math.Min(255, (a+nh)/n); r=Math.Min(255, (r+nh)/n); g=Math.Min(255, (g+nh)/n); b=Math.Min(255, (b+nh)/n);
+        ret.PutPixel(x, y, Color.FromArgb(a, r, g, b));
+      }
+    return ret;
+  }
 
   const int PartWidth=128, PartHeight=64;
 
   ArrayList objects;
-  Surface[,] surfaces;
+  Surface[,] full, fourth, sixteenth;
   int width, height;
 }
 

@@ -76,7 +76,7 @@ class App
   }
 
   static void LoadObjects()
-  { FileStream file = File.Open(SmarmPath+"objects", FileMode.Open);
+  { FileStream file = File.Open(SmarmPath+"objects", FileMode.Open, FileAccess.Read);
     List objList = new List(file);
     ObjectDef.LoadDefs(objList["objects"]);
     PolygonType.LoadDefs(objList["polygon-types"]);

@@ -66,9 +66,9 @@ class TopBar : ContainerControl
 
     { EventHandler click = new EventHandler(zoom_OnClick);
       lblZoom.Menu = new Menu();
-      lblZoom.Menu.Add(new MenuItem("Size to window", 'S')).Click += click;
-      lblZoom.Menu.Add(new MenuItem("Render size (0.5x)", 'R')).Click += click;
-      lblZoom.Menu.Add(new MenuItem("Full size (1x)", 'F')).Click += click;
+      lblZoom.Menu.Add(new MenuItem("Tiny size (1/4x)", 'T')).Click += click;
+      lblZoom.Menu.Add(new MenuItem("Normal size (1x)", 'N')).Click += click;
+      lblZoom.Menu.Add(new MenuItem("Full size (4x)", 'F')).Click += click;
     }
     
     { EventHandler click = new EventHandler(mode_OnClick);
@@ -157,7 +157,8 @@ class TopBar : ContainerControl
   void Compile()
   { string file = FileChooser.Save(Desktop, FileType.Directory);
     if(file=="") MessageBox.Show(Desktop, "Aborted", "Compilation aborted.");
-    else App.Desktop.World.Save(file, true);
+    else if(MessageBox.Show(Desktop, "Compile?", "Compile level into '"+file+"'?", MessageBoxButtons.YesNo)==0)
+      App.Desktop.World.Save(file, true);
   }
 
   void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
@@ -238,14 +239,14 @@ class TopBar : ContainerControl
   void zoom_OnClick(object sender, EventArgs e)
   { MenuItemBase item = (MenuItemBase)sender;
     switch(item.HotKey)
-    { case 'S': App.Desktop.World.ZoomMode = ZoomMode.Fit;  break;
-      case 'R': App.Desktop.World.ZoomMode = ZoomMode.Quarter; break;
+    { case 'T': App.Desktop.World.ZoomMode = ZoomMode.Tiny;  break;
+      case 'N': App.Desktop.World.ZoomMode = ZoomMode.Normal; break;
       case 'F': App.Desktop.World.ZoomMode = ZoomMode.Full; break;
     }
   }
   #endregion
 
-  const int lblWidth=66, lblHeight=16, lblPadding=6;
+  const int lblWidth=68, lblHeight=16, lblPadding=6;
   MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel(), lblType=new MenuLabel();
   Label  lblMouse=new Label();
   MenuBar menuBar=new MenuBar();
@@ -279,7 +280,7 @@ class BottomBar : ContainerControl
 
 #region WorldDisplay
 enum EditMode { Objects, Polygons, ViewOnly };
-enum ZoomMode { Full, Quarter, Fit };
+enum ZoomMode { Full=1, Normal=4, Tiny=16 };
 class WorldDisplay : Control
 { public WorldDisplay()
   { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus|ControlStyle.BackingSurface;
@@ -307,6 +308,7 @@ class WorldDisplay : Control
             item.Tag = obj;
             lbl.Menu.Add(item);
           }
+          ZoomMode = ZoomMode.Normal;
           App.Desktop.TopBar.ModeText = "Obj";
         }
         else if(editMode==EditMode.Polygons)
@@ -352,11 +354,13 @@ class WorldDisplay : Control
   { get { return zoom; }
     set
     { if(value!=zoom)
-      { switch(zoom=value)
-        { case ZoomMode.Full: App.Desktop.TopBar.ZoomText = "1x"; break;
-          case ZoomMode.Quarter: App.Desktop.TopBar.ZoomText = ".5x"; break;
-          case ZoomMode.Fit: App.Desktop.TopBar.ZoomText = "Fit"; break;
+      { int z=(int)zoom, v=(int)value;
+        switch(zoom=value)
+        { case ZoomMode.Full: App.Desktop.TopBar.ZoomText = "4x"; break;
+          case ZoomMode.Normal: App.Desktop.TopBar.ZoomText = "1x"; break;
+          case ZoomMode.Tiny: App.Desktop.TopBar.ZoomText = ".25x"; break;
         }
+        if(zoom!=ZoomMode.Normal && EditMode==EditMode.Objects) EditMode=EditMode.ViewOnly;
         Invalidate();
       }
     }
@@ -393,9 +397,11 @@ class WorldDisplay : Control
   protected override void OnPaint(PaintEventArgs e)
   { base.OnPaint(e);
     
-    Point offset = WindowToWorld(e.DisplayRect.Location);
-    if(!drawAll && editMode==EditMode.Polygons) world.Render(e.Surface, x+offset.X, y+offset.Y, e.DisplayRect, zoom);
-    else world.Render(e.Surface, x+offset.X, y+offset.Y, e.DisplayRect, zoom, drawAll ? -1 : layer, selectedObject);
+    int xoff=e.DisplayRect.X, yoff=e.DisplayRect.Y;
+    if(zoom==ZoomMode.Normal) { xoff*=4; yoff*=4; }
+    else if(zoom==ZoomMode.Tiny) { xoff*=16; yoff*=16; }
+    if(!drawAll && editMode==EditMode.Polygons) world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom);
+    else world.Render(e.Surface, x+xoff, y+yoff, e.DisplayRect, zoom, drawAll ? -1 : layer, selectedObject);
 
     foreach(Polygon poly in world.Polygons)
     { Rectangle rect = WorldToWindow(poly.Bounds);
@@ -410,15 +416,19 @@ class WorldDisplay : Control
       if(poly.Points.Length<3)
       { if(poly.Points.Length>1)
           Primitives.Line(e.Surface, WorldToWindow(poly.Points[0]), WorldToWindow(poly.Points[1]), c);
+        for(int i=0; i<poly.Points.Length; i++)
+        { Point p = WorldToWindow(new Point(poly.Points[i].X, poly.Points[i].Y));
+          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
+        }
       }
       else
       { Point[] points = (Point[])poly.Points.Clone();
         for(int i=0; i<points.Length; i++) points[i] = WorldToWindow(points[i]);
         Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
-      }
-      for(int i=0; i<poly.Points.Length; i++)
-      { Point p = WorldToWindow(new Point(poly.Points[i].X-x, poly.Points[i].Y-y));
-        Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
+        for(int i=0; i<points.Length; i++)
+        { Point p=points[i];
+          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
+        }
       }
     }
   }
@@ -488,7 +498,7 @@ class WorldDisplay : Control
     else if(editMode==EditMode.Polygons)
     { e.Handled=true;
       if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
-      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter && selectedPoly!=null)
+      else if((e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) && selectedPoly!=null)
       { Invalidate(selectedPoly);
         selectedPoly = null;
         subMode = SubMode.None;
@@ -510,9 +520,13 @@ class WorldDisplay : Control
         selectedObject=null;
         world.ChangedSinceSave = true;
       }
-      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter && selectedObject!=null)
+      else if((e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) && selectedObject!=null)
       { Invalidate(selectedObject);
         selectedObject = null;
+      }
+      else if(e.KE.Key==Key.F4 && selectedObject!=null && selectedObject.Type.Properties.Length>0)
+      { ObjectProperties props = new ObjectProperties(selectedObject);
+        if(props.Show(Desktop)) Invalidate(selectedObject);
       }
       else e.Handled=false;
     }
@@ -533,8 +547,7 @@ class WorldDisplay : Control
   { if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None)
       { if(e.Buttons==1)
-        { e.Start = WindowToWorld(e.Start);
-          if(ClickVertex(e.Start)) subMode=SubMode.DragSelected;
+        { if(ClickVertex(WindowToWorld(e.Start))) subMode=SubMode.DragSelected;
           else e.Cancel=true;
           goto done;
         }
@@ -543,8 +556,7 @@ class WorldDisplay : Control
     else if(editMode==EditMode.Objects)
     { if(subMode==SubMode.None)
       { if(e.Buttons==1)
-        { e.Start = WindowToWorld(e.Start);
-          if(ClickObject(e.Start)) subMode=SubMode.DragSelected;
+        { if(ClickObject(WindowToWorld(e.Start))) subMode=SubMode.DragSelected;
           else e.Cancel=true;
           goto done;
         }
@@ -617,39 +629,54 @@ class WorldDisplay : Control
   }
 
   void DragScroll(DragEventArgs e)
-  { e.End = WindowToWorld(e.End);
-    x -= e.End.X-e.Start.X;
-    y -= e.End.Y-e.Start.Y;
+  { int xd=e.End.X-e.Start.X, yd=e.End.Y-e.Start.Y;
+    if(zoom==ZoomMode.Normal) { xd*=4; yd*=4; }
+    else if(zoom==ZoomMode.Tiny) { xd*=16; yd*=16; }
+    x -= xd; y -= yd;
     e.Start = e.End;
     Invalidate();
   }
   
   void DragPoint(DragEventArgs e)
-  { e.End = WindowToWorld(e.End);
-    Invalidate(selectedPoly);
-    selectedPoly.Points[selectedPoint].X += e.End.X-e.Start.X;
-    selectedPoly.Points[selectedPoint].Y += e.End.Y-e.Start.Y;
-    Invalidate(selectedPoly);
-    e.Start = e.End;
-    world.ChangedSinceSave = true;
+  { int xd=e.End.X-e.Start.X, yd=e.End.Y-e.Start.Y;
+    if(zoom==ZoomMode.Full) { xd/=4; yd/=4; }
+    else if(zoom==ZoomMode.Tiny) { xd*=4; yd*=4; }
+    if(xd!=0 || yd!=0)
+    { Invalidate(selectedPoly);
+      selectedPoly.Points[selectedPoint].X += xd;
+      selectedPoly.Points[selectedPoint].Y += yd;
+      Invalidate(selectedPoly);
+      if(zoom==ZoomMode.Full) { e.Start.X += xd*4; e.Start.Y += yd*4; }
+      else e.Start = e.End;
+      world.ChangedSinceSave = true;
+    }
   }
   
   void DragObject(DragEventArgs e)
-  { e.End = WindowToWorld(e.End);
-    Point pos = selectedObject.Location;
-    pos.Offset(e.End.X-e.Start.X, e.End.Y-e.Start.Y);
-    Invalidate(selectedObject);
-    selectedObject.Location = pos;
-    Invalidate(selectedObject);
-    e.Start = e.End;
-    world.ChangedSinceSave = true;
+  { int xd=e.End.X-e.Start.X, yd=e.End.Y-e.Start.Y;
+    if(zoom==ZoomMode.Full) { xd/=4; yd/=4; }
+    else if(zoom==ZoomMode.Tiny) { xd*=4; yd*=4; }
+    if(xd!=0 || yd!=0)
+    { Point pos = selectedObject.Location;
+      pos.Offset(xd, yd);
+      Invalidate(selectedObject);
+      selectedObject.Location = pos;
+      Invalidate(selectedObject);
+      if(zoom==ZoomMode.Full) { e.Start.X += xd*4; e.Start.Y += yd*4; }
+      else e.Start = e.End;
+      world.ChangedSinceSave = true;
+    }
   }
 
-  void Invalidate(Object obj) { Invalidate(WorldToWindow(obj.Bounds)); }
+  void Invalidate(Object obj)
+  { Rectangle rect = WorldToWindow(obj.Bounds);
+    rect.Inflate(4, 4);
+    Invalidate(rect);
+  }
   
   void Invalidate(Polygon poly)
   { Rectangle rect = WorldToWindow(poly.Bounds);
-    rect.Inflate(1, 1);
+    rect.Inflate(4, 4);
     Invalidate(rect);
   }
 
@@ -670,24 +697,34 @@ class WorldDisplay : Control
     world.ChangedSinceSave = true;
   }
   
-  Point WindowToWorld(Point worldPoint)
-  { if(zoom==ZoomMode.Full) { worldPoint.X-=x; worldPoint.Y-=y; }
-    else if(zoom==ZoomMode.Quarter) { worldPoint.X = (worldPoint.X-x)*2; worldPoint.Y = (worldPoint.Y-y)*2; }
-    return worldPoint;
+  Point WindowToWorld(Point windowPoint)
+  { if(zoom==ZoomMode.Normal) { windowPoint.X += (x+2)/4; windowPoint.Y += (y+2)/4; }
+    else if(zoom==ZoomMode.Full) { windowPoint.X = (windowPoint.X+x+2)/4; windowPoint.Y = (windowPoint.Y+y+2)/4; }
+    else if(zoom==ZoomMode.Tiny)
+    { windowPoint.X = (windowPoint.X+(x+8)/16)*4;
+      windowPoint.Y = (windowPoint.Y+(y+8)/16)*4;
+    }
+    return windowPoint;
   }
-  Rectangle WindowToWorld(Rectangle worldRect)
-  { worldRect.Location = WindowToWorld(worldRect.Location);
-    if(zoom==ZoomMode.Quarter) { worldRect.Width*=2; worldRect.Height*=2; }
-    return worldRect;
+  Rectangle WindowToWorld(Rectangle windowRect)
+  { windowRect.Location = WindowToWorld(windowRect.Location);
+    if(zoom==ZoomMode.Full) { windowRect.Width=(windowRect.Width+2)/4; windowRect.Height=(windowRect.Height+2)/4; }
+    else if(zoom==ZoomMode.Tiny) { windowRect.Width*=4; windowRect.Height*=4; }
+    return windowRect;
   }
   Point WorldToWindow(Point worldPoint)
-  { if(zoom==ZoomMode.Full) { worldPoint.X-=x; worldPoint.Y-=y; }
-    else if(zoom==ZoomMode.Quarter) { worldPoint.X = (worldPoint.X-x)/2; worldPoint.Y = (worldPoint.Y-y)/2; }
+  { if(zoom==ZoomMode.Normal) { worldPoint.X -= x/4; worldPoint.Y -= y/4; }
+    else if(zoom==ZoomMode.Full) { worldPoint.X = worldPoint.X*4-x; worldPoint.Y = worldPoint.Y*4-y; }
+    else if(zoom==ZoomMode.Tiny) { worldPoint.X = worldPoint.X/4-x/16; worldPoint.Y = worldPoint.Y/4-y/16; }
     return worldPoint;
   }
   Rectangle WorldToWindow(Rectangle worldRect)
   { worldRect.Location = WorldToWindow(worldRect.Location);
-    if(zoom==ZoomMode.Quarter) { worldRect.Width/=2; worldRect.Height/=2; }
+    if(zoom==ZoomMode.Full) { worldRect.Width*=4; worldRect.Height*=4; }
+    else if(zoom==ZoomMode.Tiny)
+    { worldRect.Width=(worldRect.Width+2)/4;
+      worldRect.Height=(worldRect.Height+2)/4;
+    }
     return worldRect;
   }
   #endregion
@@ -890,6 +927,98 @@ class SmarmDesktop : DesktopControl
   TopBar topBar = new TopBar();
   BottomBar bottomBar = new BottomBar();
   WorldDisplay world = new WorldDisplay();
+}
+#endregion
+
+#region ObjectProperties
+class ObjectProperties : Form
+{ public ObjectProperties(Object obj) { this.obj=obj; }
+
+  public bool Show(DesktopControl desktop)
+  { AutoFocus focus = desktop.AutoFocusing;
+    GameLib.Fonts.Font font = RawFont==null ? desktop.Font : RawFont;
+    if(font!=null)
+    { int xpad=font.LineSkip, ypad=font.LineSkip, width=0, height=ypad, yinc = Math.Max(font.LineSkip, font.Height)+6;
+      int tab=0;
+      foreach(Property prop in obj.Type.Properties)
+      { int w = font.CalculateSize(prop.Name+':').Width;
+        if(w>width) width=w;
+      }
+      foreach(Property prop in obj.Type.Properties)
+      { Label label = new Label(prop.Name+':');
+        label.Bounds = new Rectangle(xpad-font.LineSkip/2, height, width+font.LineSkip/2, yinc);
+        label.TextAlign = ContentAlignment.MiddleRight;
+
+        Control ctl;
+        if(prop.Type=="bool")
+        { CheckBox check = new CheckBox();
+          if(obj[prop.Name]!=null) check.Checked = (bool)obj[prop.Name];
+          ctl = check;
+        }
+        else
+        { TextBox tb = new TextBox();
+          if(obj[prop.Name]!=null) tb.Text = obj[prop.Name].ToString();
+          ctl = tb;
+        }
+        ctl.Bounds = new Rectangle(label.Right+xpad, height, 100, yinc);
+        ctl.Name = prop.Name;
+        ctl.TabIndex = tab++;
+        Controls.AddRange(label, ctl);
+        if(tab==1) ctl.Focus();
+
+        height += yinc;
+      }
+
+      width += xpad*3 + 100;
+      height += ypad;
+
+      { int btnHeight = font.LineSkip*3/2;
+        Button ok = new Button("Ok");
+        ok.Bounds = new Rectangle(width/6, height, 40, btnHeight);
+        ok.Click += new ClickEventHandler(ok_Click);
+        ok.TabIndex = tab++;
+
+        Button cancel = new Button("Cancel");
+        cancel.Click += new ClickEventHandler(cancel_Click);
+        cancel.Bounds = new Rectangle(width-width/6-60, height, 60, btnHeight);
+        cancel.TabIndex = tab++;
+
+        Controls.AddRange(ok, cancel);
+        height += btnHeight;
+      }
+
+      Size = new Size(width, height+ypad);
+      Location = new Point((desktop.Width-Width)/2, (desktop.Height-Height)/2);
+    }
+    DialogResult = false;
+    if(focus==AutoFocus.None) desktop.AutoFocusing = AutoFocus.Click;
+    object ret = ShowDialog(desktop);
+    desktop.AutoFocusing = focus;
+    return (bool)ret;
+  }
+
+  private void ok_Click(object sender, ClickEventArgs e)
+  { foreach(Property prop in obj.Type.Properties)
+    { if(prop.Type!="bool")
+      { TextBox tb = (TextBox)Controls.Find(prop.Name);
+        string error = prop.Validate(tb.Text);
+        if(error!=null)
+        { MessageBox.Show(Desktop, "Validation Error", string.Format("{0}: {1}", prop.Name, error));
+          return;
+        }
+      }
+    }
+    foreach(Property prop in obj.Type.Properties)
+    { if(prop.Type=="bool") obj[prop.Name] = ((CheckBox)Controls.Find(prop.Name)).Checked;
+      else obj[prop.Name] = ((TextBox)Controls.Find(prop.Name)).Text;
+    }
+    DialogResult = true;
+    Close();
+  }
+
+  private void cancel_Click(object sender, ClickEventArgs e) { Close(); }
+  
+  Object obj;
 }
 #endregion
 
