@@ -1131,7 +1131,7 @@ class WorldDisplay : Control
     foreach(Polygon poly in world.Polygons)
       if(poly.Points.Length>2 && poly.Bounds.Contains(point))
       { try
-        { foreach(GameLib.Mathematics.TwoD.Polygon glcvPoly in poly.ToGLPolygon().SplitIntoConvexPolygons())
+        { foreach(GameLib.Mathematics.TwoD.Polygon glcvPoly in poly.ToGLPolygon().Split())
             if(glcvPoly.ConvexContains(point))
             { if(!alwaysAdd && !Keyboard.HasAnyMod(KeyMod.Shift)) SelectPolygon(null);
               if(!selected.Polys.Contains(poly)) selected.Polys.Add(poly);
