@@ -26,9 +26,9 @@ class MenuLabel : Label
     }
     else base.OnPaintBackground(e);
   }
-  protected override void OnMouseClick(ClickEventArgs e)
-  { if(!e.Handled && menu!=null)
-    { menu.Show(this, new Point(0, Height));
+  protected override void OnMouseDown(ClickEventArgs e)
+  { if(!e.Handled && e.CE.Button==0 && menu!=null)
+    { menu.Show(this, new Point(0, Height), true);
       e.Handled=true;
     }
     base.OnMouseClick(e);
@@ -45,20 +45,22 @@ class TopBar : ContainerControl
   { BackColor = Color.FromArgb(48, 48, 48);
 
     #region Add controls
-    fileMenu = new Menu();
-    fileMenu.Add(new MenuItem("New", 'N', new KeyCombo(KeyMod.Ctrl, 'N'))).Click += new EventHandler(new_OnClick);
-    fileMenu.Add(new MenuItem("Load", 'L', new KeyCombo(KeyMod.Ctrl, 'L'))).Click += new EventHandler(load_OnClick);
-    fileMenu.Add(new MenuItem("Save", 'S', new KeyCombo(KeyMod.Ctrl, 'S'))).Click += new EventHandler(save_OnClick);
-    fileMenu.Add(new MenuItem("Save As", 'A')).Click += new EventHandler(saveAs_OnClick);
-    fileMenu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
+    menuBar.Bounds = new Rectangle(0, 1, 140, 30);
 
-    editMenu = new Menu();
-    editMenu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
+    MenuBase menu = menuBar.Add(new Menu("File", new KeyCombo(KeyMod.Alt, 'F')));
+    menu.Add(new MenuItem("New", 'N', new KeyCombo(KeyMod.Ctrl, 'N'))).Click += new EventHandler(new_OnClick);
+    menu.Add(new MenuItem("Load", 'L', new KeyCombo(KeyMod.Ctrl, 'L'))).Click += new EventHandler(load_OnClick);
+    menu.Add(new MenuItem("Save", 'S', new KeyCombo(KeyMod.Ctrl, 'S'))).Click += new EventHandler(save_OnClick);
+    menu.Add(new MenuItem("Save As", 'A')).Click += new EventHandler(saveAs_OnClick);
+    menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
+
+    menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
+    menu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
     
-    viewMenu = new Menu();
-    viewMenu.Popup += new EventHandler(viewMenu_Popup);
-    viewMenu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
-    viewMenu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
+    menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
+    menu.Popup += new EventHandler(viewMenu_Popup);
+    menu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
+    menu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
@@ -75,27 +77,15 @@ class TopBar : ContainerControl
       lblMode.Menu.Add(new MenuItem("View only", 'V')).Click += click;
     }
 
-    foreach(object o in new MenuBase[] { fileMenu, editMenu, viewMenu, lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
-    { Menu menu = (Menu)o;
-      menu.BackColor = BackColor;
-      menu.SelectedBackColor = Color.FromArgb(80, 80, 80);
-      menu.SelectedForeColor = Color.White;
+    foreach(Menu m in menuBar.Menus)
+    { m.BackColor = BackColor;
+      m.SelectedBackColor = Color.FromArgb(80, 80, 80);
+      m.SelectedForeColor = Color.White;
     }
-
-    btnFile.BackColor = btnEdit.BackColor = btnView.BackColor = Color.FromArgb(80, 80, 80);
-    btnFile.TextAlign = btnEdit.TextAlign = btnView.TextAlign = ContentAlignment.TopCenter; // HACK: the arial font doesn't align properly
-
-    btnFile.Bounds = new Rectangle(4, 6, 40, 20);
-    btnEdit.Bounds = new Rectangle(btnFile.Right+4, 6, 40, 20);
-    btnView.Bounds = new Rectangle(btnEdit.Right+4, 6, 40, 20);
-
-    btnFile.Tag = fileMenu;
-    btnEdit.Tag = editMenu;
-    btnView.Tag = viewMenu;
-    { ClickEventHandler eh = new ClickEventHandler(btnMenu_OnClick);
-      btnFile.Click += eh;
-      btnEdit.Click += eh;
-      btnView.Click += eh;
+    foreach(Menu m in new MenuBase[] { lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
+    { m.BackColor = BackColor;
+      m.SelectedBackColor = Color.FromArgb(80, 80, 80);
+      m.SelectedForeColor = Color.White;
     }
 
     lblLayer.Bounds = new Rectangle(Width-lblWidth, 0, lblWidth, lblHeight);
@@ -108,15 +98,12 @@ class TopBar : ContainerControl
     lblMouse.Text = "0x0";
     lblMode.Text  = "Mode: View";
     lblZoom.Text  = "Zoom: Full";
-    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, btnFile, btnEdit, btnView);
+    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, menuBar);
     #endregion
   }
 
+  public MenuBar MenuBar { get { return menuBar; } }
   public string MouseText { set { lblMouse.Text=value; } }
-
-  public void OpenFileMenu() { OpenMenu(fileMenu, btnFile); }
-  public void OpenEditMenu() { OpenMenu(editMenu, btnEdit); }
-  public void OpenViewMenu() { OpenMenu(viewMenu, btnView); }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -124,13 +111,6 @@ class TopBar : ContainerControl
     Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Bottom-1, color);
     Primitives.VLine(e.Surface, Width-lblWidth*2-lblPadding*3/2, 0, Height-1, color);
     Primitives.VLine(e.Surface, Width-lblWidth-lblPadding/2, 0, Height-1, color);
-  }
-
-  void OpenMenu(Menu menu, Button button)
-  { if(menu.Parent==null)
-    { menu.Show(button, new Point(0, button.Height));
-      button.Pressed = false;
-    }
   }
 
   void New()
@@ -185,11 +165,6 @@ class TopBar : ContainerControl
   }
 
   #region Event handlers
-  void btnMenu_OnClick(object sender, ClickEventArgs e)
-  { Button button = (Button)sender;
-    OpenMenu((Menu)button.Tag, button);
-  }
-
   void new_OnClick(object sender, EventArgs e)   { New(); }
   void load_OnClick(object sender, EventArgs e)   { Load(); }
   void save_OnClick(object sender, EventArgs e)   { Save(); }
@@ -235,10 +210,9 @@ class TopBar : ContainerControl
   #endregion
 
   const int lblWidth=64, lblHeight=16, lblPadding=6;
-  Button btnFile=new Button("File"), btnEdit=new Button("Edit"), btnView=new Button("View");
   MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel();
   Label  lblMouse=new Label();
-  Menu   fileMenu, editMenu, viewMenu;
+  MenuBar menuBar=new MenuBar();
   
   string lastPath;
 }
@@ -257,7 +231,7 @@ class BottomBar : ContainerControl
   { base.OnPaintBackground(e);
     Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top, Color.FromArgb(64, 64, 64));
   }
-  
+
   protected override void OnResize(EventArgs e)
   { lblStatus.Bounds = new Rectangle(3, 2, Width-6, Height-4);
     base.OnResize(e);
@@ -613,16 +587,13 @@ class SmarmDesktop : DesktopControl
   public WorldDisplay World { get { return world; } }
 
   protected override void OnKeyPress(KeyEventArgs e)
-  { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt))
+  { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt|KeyMod.Ctrl))
     { e.Handled = true;
       if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
       { StopKeyRepeat();
         App.Fullscreen = !App.Fullscreen;
       }
-      else if(char.ToUpper(e.KE.Char)=='F') topBar.OpenFileMenu();
-      else if(char.ToUpper(e.KE.Char)=='E') topBar.OpenEditMenu();
-      else if(char.ToUpper(e.KE.Char)=='V') topBar.OpenViewMenu();
-      else e.Handled = false;
+      else if(ModalWindow!=null || !topBar.MenuBar.HandleKey(e.KE)) e.Handled = false;
     }
   }
 
