@@ -1647,8 +1647,8 @@ class ObjectProperties : Form
       }
 
       Text = "Properties";
-      Size size = new Size(width, height+ypad+TitleBar.Height);
-      SetBounds(new Point((desktop.Width-size.Width)/2, (desktop.Height-size.Height)/2), size, BoundsType.Absolute);
+      Size = new Size(width, height+ypad+TitleBar.Height);
+      Location = new Point((desktop.ContentWidth-Width)/2, (desktop.ContentHeight-Height)/2);
     }
     DialogResult = false;
     if(focus==AutoFocus.None) desktop.AutoFocusing = AutoFocus.Click;
