@@ -55,8 +55,8 @@ class Sprite
       }
     }
     
-    if(obj.Contains("colorkey")) surface.ColorKey = obj["colorkey"].ToColor();
-    else if(!surface.UsingAlpha) surface.ColorKey = Color.Magenta;
+    if(obj.Contains("colorkey")) surface.SetColorKey(obj["colorkey"].ToColor());
+    else if(!surface.UsingAlpha) surface.SetColorKey(Color.Magenta);
 
     if(surface.UsingAlpha)
     { hlSurface = surface.Clone();
