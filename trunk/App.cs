@@ -122,7 +122,7 @@ class App
   static void Init()
   { ObjectDef def = new ObjectDef(new List(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(
       @"(smarm-setup-data (prop 'dataPath' 'string' (default './'))
-                          (prop 'editorPath' 'string' (default 'PathToPhotoshopExecutable'))
+                          (prop 'editorPath' 'string' (default 'PathToPSDEditor'))
                           (prop 'spritePath' 'string' (default './images/sprites/'))
                           (prop 'tileMegs' 'int' (range 4 2048) (default 16))
                           (prop 'antialias' 'bool'))"))), null);
