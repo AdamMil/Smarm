@@ -68,7 +68,7 @@ class App
   public static string Version
   { get
     { System.Version v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-      return string.Format("{0}.{1}", v.Major, v.Minor);
+      return string.Format("{0}.{1}", v.Major, v.Minor<10 ? "0"+v.Minor : v.Minor.ToString());
     }
   }
 
