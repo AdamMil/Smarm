@@ -407,7 +407,6 @@ class WorldDisplay : Control
   public void EditRect()
   { bool dontQuit=false;
 
-    Capture=true; // we'll use a modal approach
     try
     { selectMode = SelectMode.TopLeft;
 
@@ -431,7 +430,7 @@ class WorldDisplay : Control
       abort:
       if(dontQuit) App.Desktop.StatusText = "Edit process aborted.";
     }
-    finally { selectMode=SelectMode.None; Capture=false; }
+    finally { selectMode=SelectMode.None; }
   }
 
   public void Load(string directory)
@@ -567,7 +566,11 @@ class WorldDisplay : Control
   }
 
   protected override void OnKeyDown(KeyEventArgs e)
-  { if(e.KE.Key==Key.Tab && e.KE.KeyMods==KeyMod.None && !drawAll)
+  { if(selectMode!=SelectMode.None && e.KE.Key==Key.Escape)
+    { selectMode=SelectMode.None;
+      e.Handled=true;
+    }
+    else if(e.KE.Key==Key.Tab && e.KE.KeyMods==KeyMod.None && !drawAll)
     { drawAll=!drawAll;
       Invalidate();
       e.Handled=true;
