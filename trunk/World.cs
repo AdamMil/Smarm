@@ -288,10 +288,10 @@ class World : IDisposable
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
     ZipOutputStream zip = new ZipOutputStream(File.Open(path+"_images.zip", FileMode.Create));
-    zip.SetLevel(5);
+    zip.SetLevel(0);
 
     Color backColor = BackColor;
-    StreamWriter writer = new StreamWriter(path+"definition");
+    StreamWriter writer = new StreamWriter(path+"_definition");
     writer.WriteLine("(smarm-world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
     options.Save(writer);
@@ -304,8 +304,10 @@ class World : IDisposable
     changed = false;
     
     if(this.zip!=null) this.zip.Close();
-    if(File.Exists(path+"images.zip")) File.Delete(path+"images.zip");
-    File.Move(path+"_images.zip", path+"images.zip");
+    foreach(string fn in new string[] { "images.zip", "definition" })
+    { if(File.Exists(path+fn)) File.Delete(path+fn);
+      File.Move(path+'_'+fn, path+fn);
+    }
 
     this.zip = new ZipFile(path+"images.zip");
     basePath = path;
