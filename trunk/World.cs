@@ -204,6 +204,12 @@ class World : IDisposable
     changed = true;
   }
 
+  public Color GetColor(int i)
+  { List list = (List)options["colors"];
+    if(list==null || list.Length<=i) return Color.Black;
+    return Property.ToColor(list[i]);
+  }
+
   public void ImportImage(ExportedImage exp)
   { PSDCodec codec=null;
     Surface  surface=null;
@@ -336,6 +342,14 @@ class World : IDisposable
     tempPath = false;
   }
   
+  public void SetColor(int i, Color c)
+  { List list = (List)options["colors"];
+    if(list==null) options["colors"] = list = new List();
+    while(list.Length<=i) list.Add("0,0,0");
+    list[i] = string.Format("{0},{1},{2}", c.R, c.G, c.B);
+    changed = true;
+  }
+
   void Clear(bool disposing)
   { if(fsFile!=null) { fsFile.Abandon(); fsFile=null; }
     if(tempPath) Directory.Delete(basePath, true);
@@ -391,7 +405,8 @@ class World : IDisposable
 
   static ObjectDef optionsDef = new ObjectDef(new List(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(
       @"(level-options (prop 'bgColor' 'color')
-                       (prop 'name' 'string' (default 'Level name')))"))), null);
+                       (prop 'name' 'string' (default 'Level name'))
+                       (prop 'colors' 'hidden' (default ())))"))), null);
 }
 
 } // namespace Smarm

@@ -180,7 +180,7 @@ struct Property
         catch { return "Not a valid numPair"; }
         return null;
     }
-    return null; // shouldn't get here
+    return null;
   }
   
   public string ValidateNumber(double value)
@@ -250,7 +250,7 @@ struct Property
 
   List data;
   
-  static string[] validTypes = new string[] { "int", "float", "string", "bool", "color", "numPair" };
+  static string[] validTypes = new string[] { "int", "float", "string", "bool", "color", "numPair", "hidden" };
   static string[] validLimiters = new string[] { "range", "enum" };
 }
 #endregion

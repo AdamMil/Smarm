@@ -57,6 +57,32 @@ class MenuLabel : Label
 }
 #endregion
 
+#region ColorButton
+class ColorButton : Button
+{ public ColorButton(Color c) { Color=c; AutoPress=false; AlwaysUsePressed=true; }
+
+  public Color Color { get { return BackColor; } set { BackColor=value; } }
+  
+  protected override void OnMouseClick(ClickEventArgs e)
+  { switch(e.CE.Button)
+    { case MouseButton.Left: App.Desktop.World.SelectedColor = Color; break;
+      case MouseButton.Middle:
+        if(App.Desktop.World.SelectColor())
+          App.Desktop.World.SelectedColor = Color = App.Desktop.World.SelectedColor;
+        break;
+      case MouseButton.Right:
+        ColorPicker cp = new ColorPicker();
+        cp.ShowDialog(Desktop);
+        if(cp.Button==ButtonClicked.Ok) Color = (Color)cp.DialogResult;
+        break;
+    }
+    e.Handled = true;
+    base.OnMouseClick(e);
+  }
+
+}
+#endregion
+
 #region TopBar
 class TopBar : ContainerControl
 { public TopBar()
@@ -78,7 +104,6 @@ class TopBar : ContainerControl
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
     menu.Add(new MenuItem("Edit in paint program", 'E', new KeyCombo(Key.F5))).Click += new EventHandler(editRect_OnClick);
-    menu.Add(new MenuItem("Fill rectangle", 'F', new KeyCombo(KeyMod.Ctrl, 'F'))).Click += new EventHandler(fillRect_Click);
     menu.Add(new MenuItem("Move rectangle", 'M', new KeyCombo(Key.F8))).Click += new EventHandler(moveRect_OnClick);
     menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(Key.F4))).Click += new EventHandler(objectProps_OnClick);
     menu.Add(new MenuItem("Level properties...", 'L')).Click += new EventHandler(levelProps_OnClick);
@@ -107,6 +132,7 @@ class TopBar : ContainerControl
     { EventHandler click = new EventHandler(mode_OnClick);
       lblMode.Menu = new Menu();
       lblMode.Menu.Add(new MenuItem("Objects", 'O')).Click += click;
+      lblMode.Menu.Add(new MenuItem("Paint", 'D')).Click += click;
       lblMode.Menu.Add(new MenuItem("Polygons", 'P')).Click += click;
       lblMode.Menu.Add(new MenuItem("View only", 'V')).Click += click;
     }
@@ -218,7 +244,6 @@ class TopBar : ContainerControl
 
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
   void moveRect_OnClick(object sender, EventArgs e) { App.Desktop.World.MoveRect(); }
-  void fillRect_Click(object sender, EventArgs e)   { App.Desktop.World.FillRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
   void levelProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowLevelProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
@@ -260,7 +285,8 @@ class TopBar : ContainerControl
   void mode_OnClick(object sender, EventArgs e)
   { MenuItemBase item = (MenuItemBase)sender;
     switch(item.HotKey)
-    { case 'O': App.Desktop.World.EditMode = EditMode.Objects;  break;
+    { case 'D': App.Desktop.World.EditMode = EditMode.Paint;  break;
+      case 'O': App.Desktop.World.EditMode = EditMode.Objects;  break;
       case 'P': App.Desktop.World.EditMode = EditMode.Polygons; break;
       case 'V': App.Desktop.World.EditMode = EditMode.ViewOnly; break;
     }
@@ -299,11 +325,48 @@ class BottomBar : ContainerControl
 { public BottomBar()
   { BackColor = SystemColors.Control;
     ForeColor = SystemColors.ControlText;
-    lblStatus.Bounds = new Rectangle(3, 2, Width-6, Height-4);
+    lblStatus.Bounds = new Rectangle(3, 2, Width-100, Height-4);
     lblStatus.Anchor = AnchorStyle.All;
     Controls.Add(lblStatus);
+    
+    int size=14, pad=2, xbase=Width-1 - (size+pad)*(colorButtons.Length/2-1), x=xbase, y = pad+1;
+    for(int i=0; i<colorButtons.Length; i++)
+    { ColorButton b = new ColorButton(Color.Black);
+      b.Anchor = AnchorStyle.TopRight;
+      b.Bounds = new Rectangle(x-size, y, size, size);
+      b.Tag = i;
+      x += size+pad;
+      if(x>Width)
+      { y += size+1;
+        x = xbase;
+      }
+      Controls.Add(colorButtons[i] = b);
+    }
+
+    size=22; x=xbase - size + pad;
+    Surface img = new Surface(App.SmarmPath+"_brush.png");
+    brush = new Button();
+    brush.Bounds = new Rectangle(x-size-2, (32-size)/2+2, size, size);
+    brush.Click += new ClickEventHandler(brush_Click);
+    brush.Image = img;
+    x -= size+pad*2;
+
+    img = new Surface(App.SmarmPath+"_bucket.png");
+    bucket = new Button();
+    bucket.Bounds = new Rectangle(x-size-2, (32-size)/2+2, size, size);
+    bucket.Click += new ClickEventHandler(bucket_Click);
+    bucket.Image = img;
+
+    bucket.Anchor = brush.Anchor = AnchorStyle.TopRight;
+    bucket.ImageAlign = brush.ImageAlign = ContentAlignment.MiddleCenter;
+    bucket.BorderStyle = brush.BorderStyle = BorderStyle.Fixed3D;
+    bucket.AutoPress = brush.AutoPress = false;
+    bucket.AlwaysUsePressed = brush.AlwaysUsePressed = true;
+
+    Controls.AddRange(brush, bucket);
   }
 
+  public ColorButton[] Colors { get { return colorButtons; } }
   public string StatusText { get { return lblStatus.Text; } set { lblStatus.Text=value; } }
 
   protected override void OnPaintBackground(PaintEventArgs e)
@@ -313,11 +376,23 @@ class BottomBar : ContainerControl
   }
 
   Label lblStatus = new Label(string.Format("Smarm version {0} loaded.", App.Version));
+  ColorButton[] colorButtons = new ColorButton[8];
+  Button brush, bucket;
+
+  private void bucket_Click(object sender, ClickEventArgs e)
+  { brush.Pressed = false;
+    bucket.Pressed = true;
+  }
+
+  private void brush_Click(object sender, ClickEventArgs e)
+  { brush.Pressed = true;
+    bucket.Pressed = false;
+  }
 }
 #endregion
 
 #region WorldDisplay
-enum EditMode { Objects, Polygons, ViewOnly };
+enum EditMode { Objects, Paint, Polygons, ViewOnly };
 enum ZoomMode { Full=1, Normal=4, Tiny=16 };
 class WorldDisplay : Control
 { public WorldDisplay()
@@ -351,6 +426,11 @@ class WorldDisplay : Control
           ShowObjects = true;
           App.Desktop.TopBar.ModeText = "Obj";
         }
+        else if(editMode==EditMode.Paint)
+        { App.Desktop.TopBar.ModeText = "Pnt";
+          ShowPolygons = false;
+          ShowObjects = true;
+        }
         else if(editMode==EditMode.Polygons)
         { foreach(PolygonType type in PolygonType.Types)
           { MenuItem item = new MenuItem(type.Type);
@@ -362,7 +442,7 @@ class WorldDisplay : Control
           ShowPolygons = true;
           App.Desktop.TopBar.ModeText = "Poly";
         }
-        else
+        else if(editMode==EditMode.ViewOnly)
         { App.Desktop.TopBar.ModeText = "View";
           ShowPolygons = ShowObjects = true;
         }
@@ -371,6 +451,20 @@ class WorldDisplay : Control
         if(layer==-1 && editMode!=EditMode.ViewOnly) SelectedLayer = 0;
         Invalidate();
       }
+    }
+  }
+
+  public Color SelectedColor
+  { get { return selected.Color; }
+    set
+    { selected.Color = value;
+      ColorButton[] btns = App.Desktop.BottomBar.Colors;
+      int i;
+      for(i=0; i<btns.Length; i++)
+      { if(btns[i].Color==value) { btns[i].Pressed = true; break; }
+        else btns[i].Pressed = false;
+      }
+      for(i++; i<btns.Length; i++) btns[i].Pressed = false;
     }
   }
 
@@ -508,6 +602,8 @@ class WorldDisplay : Control
     { Clear();
       world.Load(directory);
       BackColor = world.BackColor;
+      for(int i=0; i<App.Desktop.BottomBar.Colors.Length; i++)
+        App.Desktop.BottomBar.Colors[i].Color = world.GetColor(i);
       Invalidate();
       App.Desktop.StatusText = directory+" loaded.";
     }
@@ -557,7 +653,11 @@ class WorldDisplay : Control
       { world.Compile(directory);
         if(App.CompilePost!="") System.Diagnostics.Process.Start(App.CompilePost, "\""+directory+'\"').WaitForExit();
       }
-      else world.Save(directory);
+      else
+      { for(int i=0; i<App.Desktop.BottomBar.Colors.Length; i++)
+          world.SetColor(i, App.Desktop.BottomBar.Colors[i].Color);
+        world.Save(directory);
+      }
     }
     catch(Exception e)
     { App.Desktop.StatusText = "An error occurred during the save/compile process.";
@@ -565,6 +665,24 @@ class WorldDisplay : Control
     }
   }
   
+  public bool SelectColor()
+  { bool dontQuit=true;
+    selectMode = SelectMode.Color;
+
+    try
+    { App.Desktop.StatusText = "Click on a color in the world to select it.";
+      while(selectMode==SelectMode.Color && (dontQuit=GameLib.Events.Events.PumpEvent()));
+      if(selectMode==SelectMode.None || !dontQuit) goto abort;
+      App.Desktop.StatusText = "Color selected.";
+      return true;
+
+      abort:
+      App.Desktop.StatusText = "Selection cancelled.";
+      return false;
+    }
+    finally { selectMode=SelectMode.None; }
+  }
+
   public void ShowLevelProperties()
   { if(new ObjectProperties(world.Options).Show(Desktop))
     { BackColor = world.BackColor;
@@ -1087,23 +1205,6 @@ class WorldDisplay : Control
     world.ChangedSinceSave = true;
   }
   
-  bool SelectColor()
-  { bool dontQuit=true;
-    selectMode = SelectMode.Color;
-
-    try
-    { App.Desktop.StatusText = "Click on a color in the world to select it.";
-      while(selectMode==SelectMode.Color && (dontQuit=GameLib.Events.Events.PumpEvent()));
-      if(selectMode==SelectMode.None || !dontQuit) goto abort;
-      return true;
-
-      abort:
-      App.Desktop.StatusText = "Selection cancelled.";
-      return false;
-    }
-    finally { selectMode=SelectMode.None; }
-  }
-
   void SelectObject(Object obj)
   { if(selected.Objs.Count==1 && selected.Obj!=obj || !selected.Objs.Contains(obj))
     { InvalidateObjs();
@@ -1434,6 +1535,7 @@ class SmarmDesktop : DesktopControl
   }
 
   public TopBar TopBar { get { return topBar; } }
+  public BottomBar BottomBar { get { return bottomBar; } }
   public string StatusText { get { return bottomBar.StatusText; } set { bottomBar.StatusText=value; } }
   public WorldDisplay World { get { return world; } }
 
@@ -1466,11 +1568,13 @@ class ObjectProperties : Form
     { int xpad=font.LineSkip, ypad=font.LineSkip, width=0, height=ypad, yinc = Math.Max(font.LineSkip, font.Height)+6;
       int tab=0;
       foreach(Property prop in obj.Type.Properties)
-      { int w = font.CalculateSize(prop.Name+':').Width;
+      { if(prop.Type=="hidden") continue;
+        int w = font.CalculateSize(prop.Name+':').Width;
         if(w>width) width=w;
       }
       foreach(Property prop in obj.Type.Properties)
-      { Label label = new Label(prop.Name+':');
+      { if(prop.Type=="hidden") continue;
+        Label label = new Label(prop.Name+':');
         label.Bounds = new Rectangle(xpad-font.LineSkip/2, height, width+font.LineSkip/2, yinc);
         label.TextAlign = ContentAlignment.MiddleRight;
 
