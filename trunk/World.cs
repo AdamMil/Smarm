@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Drawing;
 using System.IO;
+using GameLib.Video;
 using ICSharpCode.SharpZipLib.Zip;
 
 namespace Smarm
@@ -86,10 +87,114 @@ class World : IDisposable
 
   public void EditRect(Rectangle rect, GameLib.Fonts.Font objectFont)
   { // expand the rectangle dimensions to multiples of the block size
-    rect.X = Expand(rect.X, Layer.PartWidth, -1);
-    rect.Y = Expand(rect.Y, Layer.PartHeight, -1);
-    rect.Width = Expand(rect.Right, Layer.PartWidth, 1) - rect.X;
-    rect.Height = Expand(rect.Bottom, Layer.PartHeight, 1) - rect.Y;
+    int right = rect.Right, bottom = rect.Bottom;
+    bool objects=false, polys=false;
+    rect.X = Expand(rect.X, Layer.PartWidth/4, -1);
+    rect.Y = Expand(rect.Y, Layer.PartHeight/4, -1);
+    rect.Width = Expand(right, Layer.PartWidth/4, 1) - rect.X;
+    rect.Height = Expand(bottom, Layer.PartHeight/4, 1) - rect.Y;
+    
+    if(rect.X<0 || rect.Y<0)
+    { int xo=-Math.Min(rect.X, 0), yo=-Math.Min(rect.Y, 0);
+      Shift(xo, yo);
+      rect.Offset(xo, yo);
+    }
+
+    Surface surface = new Surface(rect.Width*4, rect.Height*4, 32, SurfaceFlag.SrcAlpha);
+    string file = Path.GetTempPath();
+    if(file[file.Length-1] != '\\') file += '\\';
+    for(int i=0; i<10000; i++) if(!File.Exists(file+"smarm"+i+".psd")) { file += "smarm"+i+".psd"; break; } // race condition
+
+    PSDCodec codec = new PSDCodec();
+    PSDImage image = new PSDImage();
+    image.Channels = 4;
+    image.Width  = rect.Width*4;
+    image.Height = rect.Height*4;
+    image.Layers = new PSDLayer[layers.Length+3];
+    for(int i=0; i<image.Layers.Length; i++) image.Layers[i] = new PSDLayer(surface);
+    image.Layers[0].Name = "Background";
+    for(int i=0; i<layers.Length; i++)
+    { image.Layers[i+1].Name   = "Layer "+i;
+      if(layers[i].Width==0) image.Layers[i+1].Size = new Size(0, 0);
+      if(!objects)
+        foreach(Object obj in layers[i].Objects) if(obj.Bounds.IntersectsWith(rect)) { objects=true; break; }
+    }
+    image.Layers[layers.Length+1].Name = "Polygons";
+    foreach(Polygon poly in polygons) if(poly.Bounds.IntersectsWith(rect)) { polys=true; break; }
+    if(!polys) image.Layers[layers.Length+1].Size = new Size(0, 0);
+    image.Layers[layers.Length+2].Name = "Objects";
+    if(!objects) image.Layers[layers.Length+2].Size = new Size(0, 0);
+    image.Layers[layers.Length+1].Opacity = 84;
+    codec.StartWriting(image, file);
+
+    surface.Fill(backColor);
+    codec.WriteLayer(surface);
+
+    foreach(Layer layer in layers)
+    { if(layer.Width==0) codec.WriteLayer(null);
+      else
+      { surface.Fill(0);
+        layer.Render(surface, rect.X*4, rect.Y*4, surface.Bounds, ZoomMode.Full, false, null, false);
+        codec.WriteLayer(surface);
+      }
+    }
+
+    if(polys)
+    { surface.Fill(0);
+      foreach(Polygon poly in polygons)
+        if(poly.Points.Length>3 && poly.Bounds.IntersectsWith(rect))
+        { Point[] points = (Point[])poly.Points.Clone();
+          for(int i=0; i<points.Length; i++) points[i] = PolyOffset(points[i], rect.Location);
+          Primitives.FilledPolygon(surface, points, poly.Color);
+        }
+      codec.WriteLayer(surface);
+    }
+    else codec.WriteLayer(null);
+    
+    if(objects)
+    { surface.Fill(0);
+      foreach(Layer layer in layers)
+        foreach(Object obj in layer.Objects)
+          if(obj.Bounds.IntersectsWith(rect))
+          { Rectangle r = obj.Bounds;
+            r.Location = PolyOffset(r.Location, rect.Location);
+            r.Width *= 4; r.Height *= 4;
+            Primitives.Box(surface, r, Color.White);
+            if(objectFont!=null) objectFont.Render(surface, obj.Name, r, ContentAlignment.MiddleCenter);
+          }
+      codec.WriteLayer(surface);
+    }
+    else codec.WriteLayer(null);
+    
+    surface.Fill(0);
+    codec.WriteFlattened(surface);
+    codec.FinishWriting();
+    
+    try
+    { surface.Dispose();
+      bool fs = App.Fullscreen;
+      App.Fullscreen = false;
+      System.Diagnostics.Process proc = System.Diagnostics.Process.Start(App.EditorPath, file);
+      proc.WaitForExit();
+      App.Fullscreen = fs;
+      surface = new Surface(rect.Width*4, rect.Height*4, 32, SurfaceFlag.SrcAlpha);
+      
+      image = codec.StartReading(file);
+      codec.SkipLayer(); // skip the background
+      for(int i=0; i<layers.Length; i++)
+        if(layers[i].Width>0 || image.Layers[i+1].Width>0)
+        { PSDLayer layer = codec.ReadNextLayer();
+          surface.Fill(0);
+          layer.Surface.UsingAlpha = false;
+          layer.Surface.Blit(surface, layer.Location);
+          layer.Surface.Dispose();
+          layers[i].InsertSurface(surface, rect.X*4, rect.Y*4);
+          changed = true;
+        }
+        else codec.SkipLayer();
+      codec.FinishReading();
+    }
+    finally { File.Delete(file); }
   }
 
   public void InsertLayer(int pos)
@@ -129,11 +234,11 @@ class World : IDisposable
   }
 
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom)
-  { foreach(Layer layer in layers) layer.Render(dest, sx, sy, drect, zoom, false, null);
+  { foreach(Layer layer in layers) layer.Render(dest, sx, sy, drect, zoom, false, null, true);
   }
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom, int layer, Object hilite)
   { for(int i=0; i<layers.Length; i++)
-      layers[i].Render(dest, sx, sy, drect, zoom, layer==AllLayers || layer==i, hilite);
+      layers[i].Render(dest, sx, sy, drect, zoom, layer==AllLayers || layer==i, hilite, true);
   }
 
   public void Save(string directory)
@@ -141,7 +246,7 @@ class World : IDisposable
     if(path[path.Length-1] != '/') path += '/';
 
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-    ZipOutputStream zip = new ZipOutputStream(File.Open(path+"images.zip", FileMode.Create));
+    ZipOutputStream zip = new ZipOutputStream(File.Open(path+"_images.zip", FileMode.Create));
     zip.SetLevel(5);
 
     StreamWriter writer = new StreamWriter(path+"definition");
@@ -155,6 +260,10 @@ class World : IDisposable
     zip.Close();
     changed = false;
     
+    if(this.zip!=null) this.zip.Close();
+    if(File.Exists(path+"images.zip")) File.Delete(path+"images.zip");
+    File.Move(path+"_images.zip", path+"images.zip");
+
     this.zip = new ZipFile(path+"images.zip");
     basePath = path;
     tempPath = false;
@@ -165,9 +274,10 @@ class World : IDisposable
     if(tempPath) Directory.Delete(basePath, true);
 
     if(!disposing)
-    { basePath = Path.GetTempFileName();
+    { basePath = Path.GetTempFileName().Replace('\\', '/');
       File.Delete(basePath);
       Directory.CreateDirectory(basePath);
+      if(basePath[basePath.Length-1]!='/') basePath += '/';
       tempPath = true;
     }
 
@@ -181,7 +291,24 @@ class World : IDisposable
   }
 
   int Expand(int value, int block, int sign)
-  { return value + (value<0 ? (block - value%block) : (value + value%block)) * sign;
+  { if(sign<0)
+    { return value - (value<0 ? (block + value%block) : value%block);
+    }
+    else
+    { return value + (value<0 ? -value%block : (block - value%block));
+    }
+  }
+
+  Point PolyOffset(Point p, Point amt) { p.X = (p.X-amt.X)*4; p.Y = (p.Y-amt.Y)*4; return p; }
+  
+  void Shift(int xo, int yo)
+  { foreach(Layer layer in layers) layer.Shift(xo, yo);
+    foreach(Polygon poly in polygons)
+      for(int i=0; i<poly.Points.Length; i++)
+      { Point p = poly.Points[i];
+        p.Offset(xo, yo);
+        poly.Points[i] = p;
+      }
   }
 
   internal int NextTile { get { return nextTile++; } }

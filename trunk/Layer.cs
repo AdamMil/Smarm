@@ -16,6 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
+/*** THIS FILE -REALLY- NEEDS REWRITING FROM SCRATCH ***/
+
 using System;
 using System.Collections;
 using System.Drawing;
@@ -49,24 +51,30 @@ class Layer : IDisposable
     if(mru!=null) foreach(CachedSurface cs in mru) cs.Surface.Dispose();
     surfaces = new Hashtable();
     mru = new LinkedList();
-    full = new string[64, 32];
-    fourth = new string[16, 8];
-    sixteenth = new string[4, 2];
+    full = new string[32, 64];
+    fourth = new string[8, 16];
+    sixteenth = new string[2, 4];
     width = height = 0;
   }
 
-  public void Render(Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom, bool renderObjects, Object hilite)
+  public void InsertSurface(Surface s, int x, int y)
+  { InsertSurface(s, x, y, ZoomMode.Full, true);
+    SyncScaledSizes();
+  }
+
+  public void Render(Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
+                     bool renderObjects, Object hilite, bool blend)
   { sx /= (int)zoom; sy /= (int)zoom;
-    int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight, width=this.width/(int)zoom, height=this.height/(int)zoom;
+    int osx=sx, osy=sy, bx=sx/PartWidth, by=sy/PartHeight, width=(this.width+(int)zoom-1)/(int)zoom, height=(this.height+(int)zoom-1)/(int)zoom;
     sx %= PartWidth; sy %= PartHeight;
 
     string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
 
-    for(int xi=0, dx=drect.X; dx<drect.Right; xi++)
-    { if(bx+xi>width) break;
+    for(int xi=0, dx=drect.X; dx<=drect.Right; xi++)
+    { if(bx+xi>=width) break;
       if(bx+xi>=0)
-        for(int yi=0, dy=drect.Y; dy<drect.Bottom; yi++)
-        { if(by+yi>height) break;
+        for(int yi=0, dy=drect.Y; dy<=drect.Bottom; yi++)
+        { if(by+yi>=height) break;
           if(by+yi>=0)
           { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
             if(cs==null && zoom!=ZoomMode.Full)
@@ -77,7 +85,9 @@ class Layer : IDisposable
             { Point sloc = new Point(xi==0 ? sx : 0, yi==0 ? sy : 0);
               Rectangle srect = new Rectangle(sloc.X, sloc.Y, Math.Min(PartWidth-sloc.X, drect.Right-dx),
                                               Math.Min(PartHeight-sloc.Y, drect.Bottom-dy));
+              cs.Surface.UsingAlpha = blend;
               cs.Surface.Blit(dest, srect, dx, dy);
+              cs.Surface.UsingAlpha = true;
             }
           }
           dy += yi==0 ? PartHeight-sy : PartHeight;
@@ -107,24 +117,40 @@ class Layer : IDisposable
         { ScaleDown(x, y, ZoomMode.Normal);
           cs = GetSurface(surfaces, x, y);
         }
-        if(cs!=null && !IsEmpty(cs.Surface))
-        { string fn = string.Format("layer{0}_{1}.png", layerNum, img++);
-          if(!tiles)
-          { writer.WriteLine(header);
-            writer.WriteLine("    (tiles");
-            tiles=true;
+        if(cs!=null)
+        { if(!IsEmpty(cs.Surface))
+          { string fn = string.Format("layer{0}_{1}.png", layerNum, img++);
+            if(!tiles)
+            { writer.WriteLine(header);
+              writer.WriteLine("    (tiles");
+              tiles=true;
+            }
+            if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
+                                        fn, x*PartWidth, y*PartHeight, layerNum);
+            else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}))", fn, x*PartWidth, y*PartHeight);
+            if(zip==null) cs.Surface.Save(path+fn, ImageType.PNG);
+            else
+            { ms.Position = 0;
+              ms.SetLength(0);
+              cs.Surface.Save(ms, ImageType.PNG);
+              zip.PutNextEntry(new ZipEntry(fn));
+              IOH.CopyStream(ms, zip, true);
+            }
+            
+            if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
+            cs.Name=fn;
           }
-          if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
-                                       fn, x*PartWidth, y*PartHeight, layerNum);
-          else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}))", fn, x*PartWidth, y*PartHeight);
-          if(zip==null) cs.Surface.Save(path+fn, ImageType.PNG);
-          else
-          { ms.Position = 0;
-            ms.SetLength(0);
-            cs.Surface.Save(ms, ImageType.PNG);
-            zip.PutNextEntry(new ZipEntry(fn));
-            IOH.CopyStream(ms, zip, true);
-          }
+          else RemoveSurface(surfaces, x, y);
+        }
+      }
+
+    for(int x=0; x<surfaces.GetLength(1); x++)
+      for(int y=0; y<surfaces.GetLength(0); y++)
+      { CachedSurface cs = GetSurface(surfaces, x, y);
+        if(cs!=null && cs.Name!=surfaces[y,x])
+        { LinkedList.Node node = (LinkedList.Node)this.surfaces[surfaces[y,x]];
+          this.surfaces.Remove(surfaces[y,x]);
+          this.surfaces[surfaces[y,x]=cs.Name] = node;
         }
       }
 
@@ -140,6 +166,40 @@ class Layer : IDisposable
       if(!compile) writer.WriteLine("    )");
     }
     if(!compile) writer.WriteLine("  )");
+  }
+
+  public void Shift(int xo, int yo)
+  { foreach(Object obj in objects)
+    { Point p = obj.Location;
+      p.Offset(xo, yo);
+      obj.Location = p;
+    }
+
+    if(width==0) return;
+    full = Shift(full, xo*4/PartWidth, yo*4/PartHeight, width, height);
+    if(xo%PartWidth==0 && yo%PartHeight==0)
+    { fourth = Shift(fourth, xo/PartWidth, yo/PartHeight, width/4, height/4);
+      if(xo%(PartWidth*4)==0 && yo%(PartHeight*4)==0)
+        sixteenth = Shift(sixteenth, xo/4/PartWidth, yo/4/PartHeight, width/16, height/16);
+      else Clear(sixteenth);
+    }
+    else { Clear(fourth); Clear(sixteenth);  }
+    
+    width  += xo*4/PartWidth;
+    height += yo*4/PartHeight;
+    SyncScaledSizes();
+  }
+
+  void Clear(string[,] array)
+  { int w=array.GetLength(1), h=array.GetLength(0);
+    for(int y=0; y<h; y++) for(int x=0; x<w; x++) if(array[y,x]!=null) RemoveSurface(array, x, y);
+  }
+
+  void Clear(string[,] array, int x, int y, int w, int h)
+  { int bx=x/PartWidth, by=y/PartHeight, bw=(w+PartWidth-1)/PartWidth, bh=(h+PartHeight-1)/PartHeight;
+    bw = Math.Min(bx+bw, array.GetLength(1))-bx; bh = Math.Min(by+bh, array.GetLength(0))-by;
+    for(int yi=0; yi<bh; yi++)
+      for(int xi=0; xi<bw; xi++) if(array[by+yi,bx+xi]!=null) RemoveSurface(array, bx+xi, by+yi);
   }
 
   CachedSurface GetSurface(string[,] array, int x, int y)
@@ -166,8 +226,8 @@ class Layer : IDisposable
   { int x=pos.X/PartWidth, y=pos.Y/PartHeight;
     full = ResizeTo(full, x, y);
     full[y, x] = name;
-    if(x>width)  width=x;
-    if(y>height) height=y;
+    if(x+1>width)  width=x+1;
+    if(y+1>height) height=y+1;
   }
 
   void InsertSurface(Surface s, int x, int y, ZoomMode zoom, bool checkEmpty)
@@ -208,8 +268,10 @@ class Layer : IDisposable
     }
     
     if(s.Width>1 && s.Height>1)
-      if(zoom==ZoomMode.Full) InsertSurface(ScaleDown(s), ox/4, oy/4, ZoomMode.Normal, checkEmpty);
-      else if(zoom==ZoomMode.Normal) InsertSurface(ScaleDown(s), ox/4, oy/4, ZoomMode.Tiny, checkEmpty);
+      if(zoom==ZoomMode.Full)
+      { Clear(fourth, ox/4, oy/4, s.Width, s.Height);
+        Clear(sixteenth, ox/16, oy/16, s.Width, s.Height);
+      }
   }
 
   bool IsEmpty(Surface s)
@@ -237,8 +299,7 @@ class Layer : IDisposable
     List tiles = list["tiles"];
     if(tiles!=null)
     { foreach(List image in tiles) InsertSurface(image.GetString(0), image["pos"].ToPoint());
-      fourth = ResizeTo(fourth, (width+3)/4, (height+3)/4);
-      sixteenth = ResizeTo(sixteenth, (width+15)/16, (height+15)/16);
+      SyncScaledSizes();
     }
   }
 
@@ -252,16 +313,31 @@ class Layer : IDisposable
     else throw new ArgumentException("Unable to load surface");
   }
 
+  void RemoveSurface(string[,] array, int x, int y)
+  { string name = array[y, x];
+    LinkedList.Node node = (LinkedList.Node)surfaces[name];
+    CachedSurface cs = node==null ? null : (CachedSurface)node.Data;
+    if(cs!=null)
+    { mru.Remove(node);
+      surfaces.Remove(name);
+    }
+    if(File.Exists(world.basePath+name)) File.Delete(world.basePath+name);
+    array[y, x] = null;
+  }
+
   string[,] ResizeTo(string[,] array, int width, int height)
   { int owidth = array.GetLength(1), oheight = array.GetLength(0);
     if(width>owidth || height>oheight)
-    { string[,] narr = new string[Math.Max(width, owidth*2), Math.Max(height, oheight*2)];
-      for(int y=0, nwidth=narr.GetLength(1); y<oheight; y++) Array.Copy(full, y*owidth, narr, y*nwidth, owidth);
+    { int nw=width>owidth ? Math.Max(width, owidth*2) : owidth;
+      int nh=height>oheight ? Math.Max(height, oheight*2) : oheight;
+      string[,] narr = new string[nw, nh];
+      for(int y=0; y<oheight; y++) Array.Copy(full, y*owidth, narr, y*nw, owidth);
       return narr;
     }
     return array;
   }
   
+  // FIXME: make this properly handle edge pixels
   Surface ScaleDown(Surface s)
   { Surface ret = new Surface((s.Width+2)/4, (s.Height+2)/4, s.Format);
     s.Lock(); ret.Lock();
@@ -282,7 +358,8 @@ class Layer : IDisposable
   }
 
   void ScaleDown(int x, int y, ZoomMode zoom)
-  { int pw=width/((int)zoom/4), ph=height/((int)zoom/4);
+  { int zs=(int)zoom/4;
+    int pw=(width+zs-1)/zs, ph=(height+zs-1)/zs;
     string[,] surfaces, pars;
     if(zoom==ZoomMode.Normal) { surfaces=fourth; pars=full; }
     else { surfaces=sixteenth; pars=fourth; }
@@ -290,9 +367,14 @@ class Layer : IDisposable
     int bx=x*4, by=y*4, xlen=Math.Min(4, pw-bx), ylen=Math.Min(4, ph-by);
     int xoff=x*PartWidth, yoff=y*PartHeight;
     for(int yi=0; yi<ylen; yi++)
-      for(int xi=0,ryoff=yoff+yi*(PartHeight/4); xi<xlen; xi++)
-      { CachedSurface par = GetSurface(surfaces, bx+xi, by+yi);
-        if(par!=null) InsertSurface(ScaleDown(par.Surface), xoff+xi*(PartWidth/4), ryoff, zoom, false);
+      for(int xi=0; xi<xlen; xi++)
+      { CachedSurface par = GetSurface(pars, bx+xi, by+yi);
+        if(par==null && zoom==ZoomMode.Tiny)
+        { ScaleDown(bx+xi, by+yi, (ZoomMode)zs);
+          par = GetSurface(pars, bx+xi, by+yi);
+        }
+        if(par!=null)
+          InsertSurface(ScaleDown(par.Surface), xoff+xi*(PartWidth/4), yoff+yi*(PartHeight/4), zoom, false);
       }
   }
     
@@ -308,16 +390,24 @@ class Layer : IDisposable
     return cs;
   }
 
-  void RemoveSurface(string[,] array, int x, int y)
-  { string name = array[y, x];
-    LinkedList.Node node = (LinkedList.Node)surfaces[name];
-    CachedSurface cs = node==null ? null : (CachedSurface)node.Data;
-    if(cs!=null)
-    { mru.Remove(node);
-      surfaces.Remove(name);
-    }
-    if(File.Exists(world.basePath+name)) File.Delete(world.basePath+name);
-    array[y, x] = null;
+  string[,] Shift(string[,] array, int xo, int yo, int width, int height)
+  { string[,] narr;
+    int nw=width+xo, nh=height+yo;
+    if(nw>array.GetLength(1) || nh>array.GetLength(0))
+      narr = new string[Math.Max(nh, array.GetLength(0)*2), Math.Max(nw, array.GetLength(1)*2)];
+    else narr = array;
+
+    for(int y=nh-1; y>=yo; y--)
+      for(int x=nw-1; x>=xo; x--)
+      { narr[y,x] = array[y-yo,x-xo];
+        narr[y-yo,x-xo] = null;
+      }
+    return narr;
+  }
+
+  void SyncScaledSizes()
+  { fourth = ResizeTo(fourth, (width+3)/4, (height+3)/4);
+    sixteenth = ResizeTo(sixteenth, (width+15)/16, (height+15)/16);
   }
 
   void UnloadOldTiles()

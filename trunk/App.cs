@@ -105,6 +105,8 @@ class App
     Events.Initialize();
     Events.PumpEvents(new EventProcedure(EventProc));
 
+    desktop.World.World.Dispose(); // bad bad bad.. where's the encapsulation?
+
     StreamWriter file = new StreamWriter("setup");
     setup.Save(file);
     file.Close();
