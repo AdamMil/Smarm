@@ -13,10 +13,12 @@
     (portcullis (prop "closed" "bool"))
     (watersurface)
     (spikes)
-    (blinkbrick (prop "state" "int" (limit "range" 0 4)) (imageindex "state"))
-    (oneway (prop "direction" "int" (limit "enum" -1 1)) (imageindex "direction"))
+    (blinkbrick (prop "frame" "int" (limit "range" 0 4)) (imageindex "frame")
+                (prop "efrac" "int")
+                (prop "dir" "int" (limit "enum" 1 -1)))
+    (oneway (prop "direction" "int" (limit "enum" 1 -1)) (imageindex "direction"))
     (coin)
     (baldy))
-  (polygon-types
+  (polygons
     (solid (color 0 255 0))
     (water (color 0 0 255))))

@@ -79,6 +79,11 @@
                     Project = "{79014105-2BDA-4D27-98AE-2DE3F5254252}"
                     Package = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
                 />
+                <Reference
+                    Name = "ICSharpCode.SharpZipLib"
+                    AssemblyName = "ICSharpCode.SharpZipLib"
+                    HintPath = "..\SharpZipLib\ICSharpCode.SharpZipLib.dll"
+                />
             </References>
         </Build>
         <Files>

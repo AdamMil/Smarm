@@ -1,3 +1,21 @@
+/*
+Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
+http://www.adammil.net
+Copyright (C) 2003-2004 Adam Milazzo
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+*/
+
 using System;
 using System.IO;
 using System.Drawing;
@@ -97,9 +115,9 @@ struct Property
     { if(data.Contains("default")) return data["default"][0];
       List limit = Limiter;
       if(limit!=null)
-      { if(LimitType=="range" || LimitType=="enum") return limit[0];
+      { if(LimitType=="range" || LimitType=="enum") return limit[1];
         throw new InvalidOperationException(string.Format("Unhandled limiter '{0}' for property '{1}'",
-                                                          limit.Name, Name));
+                                                          LimitType, Name));
       }
       if(Type=="int") return 0;
       else if(Type=="float") return 0.0;
@@ -112,28 +130,33 @@ struct Property
   public List   Limiter { get { return data["limit"]; } }
   public string LimitType { get { List limit=Limiter; return limit==null ? null : limit.GetString(0); } }
 
-  public int GetTieIndex(int value)
+  public int GetTieIndex(object value)
   { List limit = Limiter;
-    if(limit==null) return value;
-    string type = limit.GetString(0);
-    if(limit.Name=="range") return value-limit.GetInt(1);
-    if(limit.Name=="enum")
-    { for(int i=1; i<limit.Length; i++) if(value==limit.GetInt(i)) return i;
-      throw new ArgumentException(string.Format("{0} is not a valid enum value", value));
+    if(limit==null) return Convert.ToInt32(value);
+    string type = LimitType;
+    if(type=="range") return Convert.ToInt32(value)-limit.GetInt(1);
+    if(type=="enum")
+    { for(int i=1; i<limit.Length; i++) if(value.Equals(Convert.ChangeType(limit[i], value.GetType()))) return i-1;
+      return 0; // shouldn't get here
     }
     throw new InvalidOperationException(string.Format("Unhandled limiter '{0}' for property '{1}'",
                                                       limit.Name, Name));
   }
-  
+
   public string Validate(object value)
   { switch(Type)
     { case "int": case "float":
         try { return ValidateNumber(Convert.ToDouble(value)); }
         catch { return "Invalid number."; }
       case "string":
-        string val = (string)value;
-        if(val.IndexOf('\"')!=-1 && val.IndexOf('\'')!=-1)
+        string str = (string)value;
+        if(str.IndexOf('\"')!=-1 && str.IndexOf('\'')!=-1)
           return "String cannot contain both single and double quotes.";
+        if(LimitType=="enum")
+        { List limit=Limiter;
+          for(int i=1; i<limit.Length; i++) if(limit.GetString(i)==str) return null;
+          return EnumError(limit, value);
+        }
         return null;
       case "bool": return null;
     }
@@ -147,10 +170,17 @@ struct Property
       return value>=limit.GetFloat(1) && value<=limit.GetFloat(2) ? null :
         string.Format("Value must be from {0} to {1}", limit.GetFloat(1), limit.GetFloat(2));
     if(LimitType=="enum")
-    { for(int i=1; i<limit.Length; i++) if(Convert.ToDouble(limit[i])==value) return null;
-      return string.Format("{0} is not a valid enum value", value);
+    { for(int i=1; i<limit.Length; i++) if(limit.GetFloat(i)==value) return null;
+      return EnumError(limit, value);
     }
     return null; // can't get here
+  }
+  
+  string EnumError(List limit, object value)
+  { string s = value.ToString()+" is not a valid value for enum";
+    for(int i=1; i<limit.Length; i++) s += (i==1 ? " (" : " ") + limit[i];
+    if(limit.Length>1) s += ')';
+    return s;
   }
 
   List data;
@@ -407,12 +437,13 @@ class Object
     else
     { Property prop = type[(string)index];
       object value = this[prop.Name];
-      type.Sprite.Blit(dest, value==null ? 0 : prop.GetTieIndex((int)value), x, y, hilite);
+      type.Sprite.Blit(dest, value==null ? 0 : prop.GetTieIndex(value), x, y, hilite);
     }
     // TODO: implement colorize
   }
 
-  public void Save(TextWriter writer)
+  public void Save(TextWriter writer) { Save(writer, -1); }
+  public void Save(TextWriter writer, int layer)
   { writer.Write("({0} (pos {1} {2})", Name, Location.X, Location.Y);
     foreach(Property prop in type.Properties)
     { object value = this[prop.Name];
@@ -426,6 +457,7 @@ class Object
         writer.Write(" ({0} {1})", prop.Name, value);
       }
     }
+    if(layer!=-1) writer.WriteLine(" (layer {0})", layer);
     writer.WriteLine(')');
   }
 

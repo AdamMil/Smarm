@@ -1,3 +1,21 @@
+/*
+Smarm is an editor for the game Swarm, which was written by Jim Crawford. 
+http://www.adammil.net
+Copyright (C) 2003-2004 Adam Milazzo
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+*/
+
 using System;
 using System.Drawing;
 using GameLib;
@@ -401,13 +419,21 @@ class WorldDisplay : Control
     Invalidate();
   }
 
-  public void Save(string directory, bool compile) { world.Save(directory, compile); }
+  public void Save(string directory, bool compile)
+  { if(compile) world.Compile(directory);
+    else world.Save(directory);
+  }
   
   public void ShowObjectProperties()
-  { if(selectedObject!=null && selectedObject.Type.Properties.Length>0)
-    { ObjectProperties props = new ObjectProperties(selectedObject);
-      if(props.Show(Desktop)) Invalidate(selectedObject);
+  { if(selectedObject!=null)
+    { if(selectedObject.Type.Properties.Length>0)
+      { ObjectProperties props = new ObjectProperties(selectedObject);
+        if(props.Show(Desktop)) Invalidate(selectedObject);
+        SelectObject(selectedObject); // just to update the text
+      }
+      else App.Desktop.StatusText = "Object '" + selectedObject.Name + "' has no editable properties.";
     }
+    else App.Desktop.StatusText = "No object selected.";
   }
   #endregion
 
@@ -487,13 +513,13 @@ class WorldDisplay : Control
     { if(e.CE.Button==0)
       { e.CE.Point = WindowToWorld(e.CE.Point);
         if(!ClickObject(e.CE.Point))
-        { if(selectedObject!=null) Invalidate(selectedObject);
-          selectedObject = new Object(SelectedType);
-          e.CE.X -= selectedObject.Width/2;
-          e.CE.Y -= selectedObject.Height/2;
-          selectedObject.Location = e.CE.Point;
-          world.Layers[layer].Objects.Add(selectedObject);
+        { Object obj = new Object(SelectedType);
+          e.CE.X -= obj.Width/2;
+          e.CE.Y -= obj.Height/2;
+          obj.Location = e.CE.Point;
+          world.Layers[layer].Objects.Add(obj);
           world.ChangedSinceSave = true;
+          SelectObject(obj);
         }
         Invalidate(selectedObject);
         e.Handled=true;
@@ -533,15 +559,11 @@ class WorldDisplay : Control
     else if(editMode==EditMode.Objects)
     { e.Handled=true;
       if(e.KE.Key==Key.Delete && selectedObject!=null)
-      { Invalidate(selectedObject);
-        world.Layers[layer].Objects.Remove(selectedObject);
-        selectedObject=null;
+      { world.Layers[layer].Objects.Remove(selectedObject);
+        SelectObject(null);
         world.ChangedSinceSave = true;
       }
-      else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedObject!=null)
-      { Invalidate(selectedObject);
-        selectedObject = null;
-      }
+      else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedObject!=null) SelectObject(null);
       else e.Handled=false;
     }
     if(e.Handled) Desktop.StopKeyRepeat();
@@ -632,11 +654,7 @@ class WorldDisplay : Control
   bool ClickObject(Point pt)
   { foreach(Object obj in world.Layers[layer].Objects)
       if(obj.Bounds.Contains(pt))
-      { if(obj!=selectedObject)
-        { if(selectedObject!=null) Invalidate(selectedObject);
-          selectedObject = obj;
-          Invalidate(obj);
-        }
+      { if(obj!=selectedObject) SelectObject(obj);
         return true;
       }
     return false;
@@ -711,6 +729,24 @@ class WorldDisplay : Control
     world.ChangedSinceSave = true;
   }
   
+  void SelectObject(Object obj)
+  { if(obj != selectedObject)
+    { if(selectedObject!=null) Invalidate(selectedObject);
+      selectedObject=obj;
+      if(obj!=null) Invalidate(obj);
+    }
+    if(obj==null) App.Desktop.StatusText="";
+    else
+    { string text = obj.Name;
+      Property[] props = obj.Type.Properties;
+      for(int i=0; i<props.Length; i++)
+      { text += (i==0 ? ':' : ',');
+        text += " "+props[i].Name+'='+obj[props[i].Name];
+      }
+      App.Desktop.StatusText = text;
+    }
+  }
+
   Point WindowToWorld(Point windowPoint)
   { if(zoom==ZoomMode.Normal) { windowPoint.X += (x+2)/4; windowPoint.Y += (y+2)/4; }
     else if(zoom==ZoomMode.Full) { windowPoint.X = (windowPoint.X+x+2)/4; windowPoint.Y = (windowPoint.Y+y+2)/4; }
@@ -780,6 +816,7 @@ class FileChooser : Form
       Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
       label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip+1);
       path.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
+      path.SelectOnFocus = false;
       path.Focus();
       path.CaretPosition = path.Text.Length;
     }
@@ -947,7 +984,7 @@ class SmarmDesktop : DesktopControl
 
 #region ObjectProperties
 class ObjectProperties : Form
-{ public ObjectProperties(Object obj) { this.obj=obj; }
+{ public ObjectProperties(Object obj) { this.obj=obj; KeyPreview=true; }
 
   public bool Show(DesktopControl desktop)
   { AutoFocus focus = desktop.AutoFocusing;
@@ -1010,6 +1047,14 @@ class ObjectProperties : Form
     object ret = ShowDialog(desktop);
     desktop.AutoFocusing = focus;
     return (bool)ret;
+  }
+
+  protected override void OnKeyDown(KeyEventArgs e)
+  { if(e.KE.KeyMods==KeyMod.None)
+    { if(e.KE.Key==Key.Enter) { ok_Click(null, null); e.Handled=true; }
+      else if(e.KE.Key==Key.Escape) { cancel_Click(null, null); e.Handled=true; }
+    }
+    base.OnKeyDown(e);
   }
 
   private void ok_Click(object sender, ClickEventArgs e)
