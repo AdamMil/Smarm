@@ -59,9 +59,14 @@ class MenuLabel : Label
 
 #region ColorButton
 class ColorButton : Button
-{ public ColorButton(Color c) { Color=c; AutoPress=false; AlwaysUsePressed=true; }
+{ public ColorButton() { BackColor=Color.Black; AutoPress=false; AlwaysUsePressed=true; }
 
-  public Color Color { get { return BackColor; } set { BackColor=value; } }
+  public Color Color
+  { get { return App.Desktop.World.World.GetColor((int)Tag); }
+    set { App.Desktop.World.World.SetColor((int)Tag, BackColor=value); }
+  }
+  
+  public void UpdateColor() { BackColor=Color; }
   
   protected override void OnMouseClick(ClickEventArgs e)
   { switch(e.CE.Button)
@@ -79,7 +84,6 @@ class ColorButton : Button
     e.Handled = true;
     base.OnMouseClick(e);
   }
-
 }
 #endregion
 
@@ -321,6 +325,7 @@ class TopBar : ContainerControl
 #endregion
 
 #region BottomBar
+enum Tool { None, Bucket, Brush };
 class BottomBar : ContainerControl
 { public BottomBar()
   { BackColor = SystemColors.Control;
@@ -331,7 +336,7 @@ class BottomBar : ContainerControl
     
     int size=14, pad=2, xbase=Width-1 - (size+pad)*(colorButtons.Length/2-1), x=xbase, y = pad+1;
     for(int i=0; i<colorButtons.Length; i++)
-    { ColorButton b = new ColorButton(Color.Black);
+    { ColorButton b = new ColorButton();
       b.Anchor = AnchorStyle.TopRight;
       b.Bounds = new Rectangle(x-size, y, size, size);
       b.Tag = i;
@@ -344,30 +349,40 @@ class BottomBar : ContainerControl
     }
 
     size=22; x=xbase - size + pad;
-    Surface img = new Surface(App.SmarmPath+"_brush.png");
-    brush = new Button();
-    brush.Bounds = new Rectangle(x-size-2, (32-size)/2+2, size, size);
-    brush.Click += new ClickEventHandler(brush_Click);
-    brush.Image = img;
-    x -= size+pad*2;
-
-    img = new Surface(App.SmarmPath+"_bucket.png");
-    bucket = new Button();
-    bucket.Bounds = new Rectangle(x-size-2, (32-size)/2+2, size, size);
-    bucket.Click += new ClickEventHandler(bucket_Click);
-    bucket.Image = img;
-
-    bucket.Anchor = brush.Anchor = AnchorStyle.TopRight;
-    bucket.ImageAlign = brush.ImageAlign = ContentAlignment.MiddleCenter;
-    bucket.BorderStyle = brush.BorderStyle = BorderStyle.Fixed3D;
-    bucket.AutoPress = brush.AutoPress = false;
-    bucket.AlwaysUsePressed = brush.AlwaysUsePressed = true;
-
-    Controls.AddRange(brush, bucket);
+    int index=0;
+    foreach(string s in new string[] { "_brush.png", "_bucket.png" })
+    { Surface img = new Surface(App.SmarmPath+s);
+      tools[index] = new Button();
+      tools[index].AlwaysUsePressed = true;
+      tools[index].Anchor = AnchorStyle.TopRight;
+      tools[index].AutoPress = false;
+      tools[index].BorderStyle = BorderStyle.Fixed3D;
+      tools[index].Bounds = new Rectangle(x-size-2, (32-size)/2+2, size, size);
+      tools[index].Click += new ClickEventHandler(tool_Click);
+      tools[index].Image = img;
+      tools[index].ImageAlign = ContentAlignment.MiddleCenter;
+      x -= size+pad*2;
+      Controls.Add(tools[index++]);
+    }
+    index=0;
+    foreach(Tool t in new Tool[] { Tool.Brush, Tool.Bucket }) tools[index++].Tag = t;
   }
 
   public ColorButton[] Colors { get { return colorButtons; } }
+  public Tool SelectedTool
+  { get { return tool; }
+    set
+    { if(tool!=value)
+      { for(int i=0; i<tools.Length; i++) tools[i].Pressed = (Tool)tools[i].Tag==value;
+        App.Desktop.World.EditMode = EditMode.Paint;
+        tool = value;
+      }
+    }
+  }
+
   public string StatusText { get { return lblStatus.Text; } set { lblStatus.Text=value; } }
+
+  public void UpdateColorButtons() { for(int i=0; i<colorButtons.Length; i++) colorButtons[i].UpdateColor(); }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -375,19 +390,12 @@ class BottomBar : ContainerControl
     Primitives.HLine(e.Surface, e.DisplayRect.X, e.DisplayRect.Right-1, DisplayRect.Top+1, SystemColors.ControlDark);
   }
 
+  private void tool_Click(object sender, ClickEventArgs e) { SelectedTool = (Tool)((Button)sender).Tag; }
+
   Label lblStatus = new Label(string.Format("Smarm version {0} loaded.", App.Version));
-  ColorButton[] colorButtons = new ColorButton[8];
-  Button brush, bucket;
-
-  private void bucket_Click(object sender, ClickEventArgs e)
-  { brush.Pressed = false;
-    bucket.Pressed = true;
-  }
-
-  private void brush_Click(object sender, ClickEventArgs e)
-  { brush.Pressed = true;
-    bucket.Pressed = false;
-  }
+  ColorButton[] colorButtons = new ColorButton[16];
+  Button[] tools = new Button[2];
+  Tool tool;
 }
 #endregion
 
@@ -428,8 +436,8 @@ class WorldDisplay : Control
         }
         else if(editMode==EditMode.Paint)
         { App.Desktop.TopBar.ModeText = "Pnt";
-          ShowPolygons = false;
-          ShowObjects = true;
+          ShowObjects = false;
+          ShowPolygons = true;
         }
         else if(editMode==EditMode.Polygons)
         { foreach(PolygonType type in PolygonType.Types)
@@ -446,6 +454,7 @@ class WorldDisplay : Control
         { App.Desktop.TopBar.ModeText = "View";
           ShowPolygons = ShowObjects = true;
         }
+        if(editMode!=EditMode.Paint) SelectedTool=Tool.None;
         SelectedType = lbl.Menu.Controls.Count>0 ? lbl.Menu.Controls[0].Text : "";
         selected.Clear();
         if(layer==-1 && editMode!=EditMode.ViewOnly) SelectedLayer = 0;
@@ -479,6 +488,11 @@ class WorldDisplay : Control
         Invalidate();
       }
     }
+  }
+
+  public Tool SelectedTool 
+  { get { return App.Desktop.BottomBar.SelectedTool; }
+    set { App.Desktop.BottomBar.SelectedTool = value; }
   }
 
   public string SelectedType
@@ -581,29 +595,12 @@ class WorldDisplay : Control
     App.Desktop.StatusText = "Edit process aborted.";
   }
 
-  public void FillRect()
-  { if(layer==-1)
-    { MessageBox.Show(Desktop, "Error", "You need to select a layer first.", MessageBoxButtons.Ok);
-      return;
-    }
-    if(!SelectRectangle("fill")) goto abort;
-    if(!SelectColor()) goto abort;
-    world.FillRect(world.ExpandRect(WindowToWorld(selected.Rect)), selected.Color, layer);
-    Invalidate();
-    App.Desktop.StatusText = "Fill completed.";
-    return;
-
-    abort:
-    App.Desktop.StatusText = "Fill process aborted.";
-  }
-
   public void Load(string directory)
   { try
     { Clear();
       world.Load(directory);
       BackColor = world.BackColor;
-      for(int i=0; i<App.Desktop.BottomBar.Colors.Length; i++)
-        App.Desktop.BottomBar.Colors[i].Color = world.GetColor(i);
+      App.Desktop.BottomBar.UpdateColorButtons();
       Invalidate();
       App.Desktop.StatusText = directory+" loaded.";
     }
@@ -653,11 +650,7 @@ class WorldDisplay : Control
       { world.Compile(directory);
         if(App.CompilePost!="") System.Diagnostics.Process.Start(App.CompilePost, "\""+directory+'\"').WaitForExit();
       }
-      else
-      { for(int i=0; i<App.Desktop.BottomBar.Colors.Length; i++)
-          world.SetColor(i, App.Desktop.BottomBar.Colors[i].Color);
-        world.Save(directory);
-      }
+      else world.Save(directory);
     }
     catch(Exception e)
     { App.Desktop.StatusText = "An error occurred during the save/compile process.";
@@ -717,32 +710,32 @@ class WorldDisplay : Control
                  showAllObjects ? World.AllLayers : showObjs ? layer : World.NoLayer,
                  (Object[])selected.Objs.ToArray(typeof(Object)));
 
-    if(!showPolys) return;
-    foreach(Polygon poly in world.Polygons)
-    { Rectangle rect = WorldToWindow(poly.Bounds);
-      rect.Inflate(1, 1);
-      if(!rect.IntersectsWith(e.WindowRect)) continue;
+    if(showPolys)
+      foreach(Polygon poly in world.Polygons)
+      { Rectangle rect = WorldToWindow(poly.Bounds);
+        rect.Inflate(1, 1);
+        if(!rect.IntersectsWith(e.WindowRect)) continue;
 
-      Color c;
-      if(poly.Points.Length<3)
-        c = (selected.Polys.Contains(poly) ? Color.FromArgb(255, 0, 0) : Color.FromArgb(192, 0, 0));
-      else
-        c = selected.Polys.Contains(poly) ? poly.Color
-                                          : Color.FromArgb(poly.Color.R*3/4, poly.Color.G*3/4, poly.Color.B*3/4);
+        Color c;
+        if(poly.Points.Length<3)
+          c = (selected.Polys.Contains(poly) ? Color.FromArgb(255, 0, 0) : Color.FromArgb(192, 0, 0));
+        else
+          c = selected.Polys.Contains(poly) ? poly.Color
+                                            : Color.FromArgb(poly.Color.R*3/4, poly.Color.G*3/4, poly.Color.B*3/4);
 
-      if(poly.Points.Length<3)
-      { if(poly.Points.Length>1)
-          Primitives.Line(e.Surface, WorldToWindow(poly.Points[0]), WorldToWindow(poly.Points[1]), c);
-        for(int i=0; i<poly.Points.Length; i++)
-          Primitives.Circle(e.Surface, WorldToWindow(new Point(poly.Points[i].X, poly.Points[i].Y)), 4, c);
+        if(poly.Points.Length<3)
+        { if(poly.Points.Length>1)
+            Primitives.Line(e.Surface, WorldToWindow(poly.Points[0]), WorldToWindow(poly.Points[1]), c);
+          for(int i=0; i<poly.Points.Length; i++)
+            Primitives.Circle(e.Surface, WorldToWindow(new Point(poly.Points[i].X, poly.Points[i].Y)), 4, c);
+        }
+        else
+        { Point[] points = (Point[])poly.Points.Clone();
+          for(int i=0; i<points.Length; i++) points[i] = WorldToWindow(points[i]);
+          Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
+          for(int i=0; i<points.Length; i++) Primitives.Circle(e.Surface, points[i], 4, c);
+        }
       }
-      else
-      { Point[] points = (Point[])poly.Points.Clone();
-        for(int i=0; i<points.Length; i++) points[i] = WorldToWindow(points[i]);
-        Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
-        for(int i=0; i<points.Length; i++) Primitives.Circle(e.Surface, points[i], 4, c);
-      }
-    }
     
     if(subMode==SubMode.DragRectangle) Primitives.Box(e.Surface, selected.Rect, Color.FromArgb(0, 255, 0));
     if(dragImage!=null)
@@ -794,9 +787,14 @@ class WorldDisplay : Control
       pt.Offset(e.CE.X, e.CE.Y);
       selected.Color = DrawSurface.GetPixel(pt);
       selectMode=SelectMode.Done;
+      e.Handled = true;
     }
     else if(subMode==SubMode.DragRectangle || selectMode!=SelectMode.None)
     { // do nothing (but prevent the other if blocks from executing)
+    }
+    else if(editMode==EditMode.Paint)
+    { if(SelectedTool==Tool.Brush && e.CE.Button==MouseButton.Left) Brush(e.CE.Point, true);
+      e.Handled = true;
     }
     else if(editMode==EditMode.Polygons)
     { if(e.CE.Button==MouseButton.Left)
@@ -959,13 +957,16 @@ class WorldDisplay : Control
       }
     }
 
-    if(e.OnlyPressed(MouseButton.Left)) subMode = SubMode.DragRectangle;
+    bool nodrag = editMode==EditMode.Paint && SelectedTool!=Tool.Bucket;
+    if(e.OnlyPressed(MouseButton.Left))
+    { if(!nodrag) subMode = SubMode.DragRectangle;
+    }
     else if(!e.Pressed(MouseButton.Right)) e.Cancel=true;
 
     done:
     base.OnDragStart(e);
   }
-  
+
   protected override void OnDragMove(DragEventArgs e)
   { if(e.Pressed(MouseButton.Right)) DragScroll(e);
     else if(e.Pressed(MouseButton.Left))
@@ -974,6 +975,9 @@ class WorldDisplay : Control
         else if(editMode==EditMode.Objects) DragObject(e);
       }
       else if(subMode==SubMode.DragRectangle) DragRect(e);
+      else if(editMode==EditMode.Paint)
+      { if(SelectedTool==Tool.Brush) Brush(e.End, false);
+      }
     }
     base.OnDragMove(e);
   }
@@ -1001,8 +1005,19 @@ class WorldDisplay : Control
           { if(!Keyboard.HasAnyMod(KeyMod.Shift)) SelectPolygon(null);
             SelectPolygons(selected.Rect);
           }
+          else if(editMode==EditMode.Paint)
+          { if(SelectedTool==Tool.Bucket)
+            { if(layer==-1) MessageBox.Show(Desktop, "Whoops", "Select a layer first!");
+              else world.FillRect(world.ExpandRect(selected.Rect), selected.Color, layer);
+            }
+          }
         }
-        else selectMode = SelectMode.Done;
+        else
+        { selectMode = SelectMode.Done;
+          if(editMode==EditMode.Paint)
+          { if(SelectedTool==Tool.Brush) Brush(e.End, true);
+          }
+        }
         Invalidate();
       }
     }
@@ -1059,7 +1074,7 @@ class WorldDisplay : Control
 
     public Rectangle Rect;
     public ArrayList Objs = new ArrayList(), Polys = new ArrayList();
-    public Color Color;
+    public Color Color = Color.Black;
   }
 
   #region Private methods
@@ -1068,6 +1083,15 @@ class WorldDisplay : Control
     if(yd>xd) newPoint.X=oldPoint.X;
     else newPoint.Y=oldPoint.Y;
     return newPoint;
+  }
+
+  void Brush(Point point, bool warn)
+  { if(layer!=-1)
+    { point = WindowToWorld(point);
+      Invalidate(WorldToWindow(world.ExpandRect(new Rectangle(point, new Size(1, 1)))));
+      world.FillPoint(point, selected.Color, layer);
+    }
+    else if(warn) MessageBox.Show(Desktop, "Whoops", "Select a layer first!");
   }
 
   bool ClickVertex(Point point)

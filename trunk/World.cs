@@ -194,6 +194,16 @@ class World : IDisposable
     return new ExportedImage(rect, file);
   }
 
+  public void FillPoint(Point pt, Color color, int layer)
+  { if(pt.X<0 || pt.Y<0)
+    { int xo=-Math.Min(pt.X, 0), yo=-Math.Min(pt.Y, 0);
+      Shift(xo, yo);
+      pt.Offset(xo, yo);
+    }
+    layers[layer].FillPoint(pt, color);
+    changed = true;
+  }
+
   public void FillRect(Rectangle rect, Color color, int layer)
   { if(rect.X<0 || rect.Y<0)
     { int xo=-Math.Min(rect.X, 0), yo=-Math.Min(rect.Y, 0);
