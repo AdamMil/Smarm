@@ -30,7 +30,7 @@ class Sprite
   { List list = obj["image"];
     if(list!=null)
     { string name = list.GetString(0);
-      surface = LoadImage(App.SmarmPath+name, false);
+      if(File.Exists(App.SmarmPath+name)) surface = LoadImage(App.SmarmPath+name, false);
       if(surface==null) surface=LoadImage(App.SpritePath+name);
       list  = list["elementwidth"];
       width = list==null ? surface.Width : list.GetInt(0);

@@ -140,6 +140,7 @@ class Layer : IDisposable
           o.Blit(dest, bounds.X, bounds.Y, hilite!=null && Array.IndexOf(hilite, o)!=-1);
       }
     else
+    { if(font!=null) font.Color = Color.White;
       foreach(Object obj in objects)
         { Rectangle r = obj.Bounds;
           if(zoom==ZoomMode.Full) { r.X *= 4; r.Y *= 4; r.Width *= 4; r.Height *= 4; }
@@ -150,6 +151,7 @@ class Layer : IDisposable
             if(zoom==ZoomMode.Full && font!=null) font.Render(dest, obj.Name, r, ContentAlignment.MiddleCenter);
           }
         }
+    }
   }
 
   public void Save(string path, System.IO.TextWriter writer, FSFile fsfile, int layerNum, bool compile)
@@ -377,7 +379,7 @@ class Layer : IDisposable
         { if(IsEmpty(cs.Surface)) RemoveSurface(surfaces, x, y);
           else
           { if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
-                                         cs.Name, x*PartWidth, y*PartHeight, layerNum);
+                                         cs.Name, x*PartWidth+PartWidth/2, y*PartHeight+PartHeight/2, layerNum);
             else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
                                   cs.Name, x*PartWidth, y*PartHeight, (int)zoom);
             if(fsfile==null) cs.Surface.Save(path+cs.Name, ImageType.PNG);

@@ -1,8 +1,15 @@
 (smarm-editor-data
   (objects
     (swarmie (image "swarmie.png"))
+    (frontdoor (prop "name" "string") (prop "hidelayer" "int"))
+    (pulltriangle (image "pulltriangle.png") (prop "trigger" "string"))
+    (trapdoor (prop "name" "string") (prop "hidelayer" "int"))
+    (door (prop "name" "string") (prop "level" "string") (open 0))
+    (doorkey (image "doorkey.png"))
     (breaker)
-    (movingplat (prop "xvel" "int") (prop "yvel" "int"))
+    (movingplat (prop "xvel" "int") (prop "yvel" "int") (prop "theme" "int") (imageindex "theme"))
+    (levelbutton (prop "opens" "string") (prop "theme" "int") (imageindex "theme"))
+    (platblocker (image "platblocker.png"))
     (springboard (image "springboard.png"))
     (key (prop "color" "int" (limit "range" 1 7))
       (colorize "color" (color 255 0 0) (color 0 255 0) (color 255 255 0) (color 0 0 255) (color 255 0 255)
