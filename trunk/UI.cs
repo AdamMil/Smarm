@@ -16,6 +16,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
+// TODO: change shift-click to ctrl-click for poly
+// TODO: make shift-click align on nearest axis
+// TODO: make points be a 9-diameter circle
+// TODO: allow points to be dragged even during NewPoly state
 using System;
 using System.Drawing;
 using GameLib;
@@ -123,17 +127,6 @@ class TopBar : ContainerControl
     #endregion
   }
 
-  public bool AntialiasText
-  { get { return ((GameLib.Fonts.TrueTypeFont)Desktop.Font).RenderStyle == GameLib.Fonts.RenderStyle.Shaded; }
-    set
-    { if(value!=AntialiasText)
-      { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)Desktop.Font;
-        font.RenderStyle = value ? GameLib.Fonts.RenderStyle.Shaded : GameLib.Fonts.RenderStyle.Solid;
-        Desktop.Invalidate();
-      }
-    }
-  }
-
   public string LayerText { set { lblLayer.Text=value; } }
   public string ModeText { set { lblMode.Text="Mode: "+value; } }
   public string MouseText { set { lblMouse.Text=value; } }
@@ -219,15 +212,12 @@ class TopBar : ContainerControl
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
-  { if(new ObjectProperties(App.SetupObject).Show(Desktop))
-    { object value = App.SetupObject["antialias"];
-      AntialiasText = value!=null && (bool)value ? true : false;
-    }
+  { if(new ObjectProperties(App.SetupObject).Show(Desktop)) App.PropertiesUpdated();
   }
 
   void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
 
-  void toggleAntialias_OnClick(object sender, EventArgs e) { AntialiasText = !AntialiasText; }
+  void toggleAntialias_OnClick(object sender, EventArgs e) { App.AntialiasText = !App.AntialiasText; }
 
   void layerMenu_Popup(object sender, EventArgs e)
   { Menu menu = (Menu)sender;
@@ -396,8 +386,12 @@ class WorldDisplay : Control
 
   #region Public methods
   public void AddLayer()
-  { world.AddLayer();
-    SelectedLayer = world.Layers.Length-1;
+  { int layer = new LayerPositionChooser().Show(Desktop);
+    if(layer!=-1)
+    { world.InsertLayer(-1);
+      SelectedLayer = layer;
+    }
+    else App.Desktop.StatusText = "Layer creation aborted.";
   }
 
   public void Clear()
@@ -570,7 +564,7 @@ class WorldDisplay : Control
 
   protected override void OnKeyDown(KeyEventArgs e)
   { if(e.KE.Key==Key.Tab && e.KE.KeyMods==KeyMod.None && !drawAll)
-    { drawAll=true;
+    { drawAll=!drawAll;
       Invalidate();
       e.Handled=true;
     }
@@ -610,15 +604,6 @@ class WorldDisplay : Control
     base.OnKeyDown(e);
   }
 
-  protected override void OnKeyUp(KeyEventArgs e)
-  { if(e.KE.Key==Key.Tab && drawAll)
-    { drawAll = false;
-      Invalidate();
-      e.Handled = true;
-    }
-    base.OnKeyUp(e);
-  }
-  
   protected override void OnDragStart(DragEventArgs e)
   { if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None)
@@ -822,7 +807,7 @@ class WorldDisplay : Control
 
   World world = new World();
   EventHandler typeSel;
-  Rectangle selectedRect;
+  Rectangle selectedRect = new Rectangle();
   Polygon   selectedPoly;
   Object    selectedObject;
   int x, y, layer, selectedPoint;
@@ -981,6 +966,58 @@ class FileChooser : Form
   TextBox  path  = new TextBox();
   FileType type  = FileType.File;
   bool    existing, warn;
+}
+#endregion
+
+#region LayerPositionChooser
+class LayerPositionChooser : Form
+{ public LayerPositionChooser()
+  { pos.Text = App.Desktop.World.World.Layers.Length.ToString();
+    label.Text = string.Format("Where should this layer be inserted (0 to {0})?", pos.Text);
+    KeyPreview = true;
+    Controls.AddRange(label, pos);
+  }
+
+  public int Show(DesktopControl desktop)
+  { GameLib.Fonts.Font font = RawFont==null ? desktop.Font : RawFont;
+    if(font!=null) // TODO: I should really use a base class that both this and FileChooser derive from...
+    { int pad=6, sep=4;
+      int width  = Math.Max(font.CalculateSize(label.Text).Width+pad*2, desktop.Width/2);
+      int height = pad*2+sep+font.LineSkip*5/2;
+
+      Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
+      label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip+1);
+      pos.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
+      pos.SelectOnFocus = false;
+      pos.Focus();
+    }
+    ShowDialog(desktop);
+    return int.Parse(pos.Text);
+  }
+
+  protected override void OnKeyDown(KeyEventArgs e)
+  { if(!e.Handled && e.KE.KeyMods==KeyMod.None)
+    { if(e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter)
+      { Desktop.StopKeyRepeat();
+        try
+        { int pos = int.Parse(this.pos.Text), max = App.Desktop.World.World.Layers.Length;
+          if(pos<0 || pos>max) label.Text = string.Format("Out of range! (Choose from 0 to {0})", max);
+          else Close();
+        }
+        catch { label.Text = "The position must be a valid integer."; }
+        e.Handled=true;
+      }
+      else if(e.KE.Key==Key.Escape)
+      { pos.Text="-1";
+        Close();
+        e.Handled=true;
+      }
+    }
+    base.OnKeyDown(e);
+  }
+  
+  Label    label = new Label();
+  TextBox  pos   = new TextBox();
 }
 #endregion
 

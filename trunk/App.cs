@@ -32,6 +32,17 @@ class App
 
   public static SmarmDesktop Desktop { get { return desktop; } }
 
+  public static bool AntialiasText
+  { get { return ((GameLib.Fonts.TrueTypeFont)desktop.Font).RenderStyle == GameLib.Fonts.RenderStyle.Shaded; }
+    set
+    { if(value!=AntialiasText)
+      { GameLib.Fonts.TrueTypeFont font = (GameLib.Fonts.TrueTypeFont)desktop.Font;
+        font.RenderStyle = value ? GameLib.Fonts.RenderStyle.Shaded : GameLib.Fonts.RenderStyle.Solid;
+        desktop.Invalidate();
+      }
+    }
+  }
+
   public static bool Fullscreen
   { get { return fullscreen; }
     set
@@ -47,6 +58,7 @@ class App
   }
 
   public static string EditorPath { get { return (string)setup["editorPath"]; } }
+  public static int    MaxTiles   { get { return maxTiles; } }
   public static string SmarmPath  { get { return (string)setup["dataPath"]; } }
   public static string SpritePath { get { return (string)setup["spritePath"]; } }
   public static Object SetupObject { get { return setup; } }
@@ -56,6 +68,11 @@ class App
     { System.Version v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
       return string.Format("{0}.{1}", v.Major, v.Minor);
     }
+  }
+
+  public static void PropertiesUpdated()
+  { maxTiles = (int)setup["tileMegs"]*1024*256/Layer.PartWidth/Layer.PartHeight;
+    AntialiasText = setup["antialias"]!=null && (bool)setup["antialias"];
   }
 
   static bool EventProc(Event e)
@@ -69,16 +86,28 @@ class App
       else if(e is QuitEvent) return false;
     }
     else if(desktop.Updated)
-    { Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
-      desktop.Updated=false;
+    { //Video.UpdateRects(desktop.UpdatedAreas, desktop.NumUpdatedAreas);
+      //desktop.Updated=false;
+      Video.DisplaySurface.Fill(System.Drawing.Color.White);
+      //image.Layers[0].Surface.Blit(Video.DisplaySurface, 0, 0);
+      //image.Layers[1].Surface.Blit(Video.DisplaySurface, 0, 64);
+      image.Flattened.Blit(Video.DisplaySurface, 0, 128);
+      Video.DisplaySurface.Flip();
     }
     return true;
   }
 
+  static PSDImage image;
   static void Main()
-  { WM.WindowTitle = "Smarm "+Version;
+  { PSDCodec codec = new PSDCodec();
+    image = codec.Read("c:/wutemp/test.psd");
+    codec.Write(image, "c:/wutemp/out.psd");
+    //image = codec.Read("c:/wutemp/out.psd");
+    
+    WM.WindowTitle = "Smarm "+Version;
     desktop.Font = new GameLib.Fonts.TrueTypeFont(SmarmPath+"font.ttf", 10);
     desktop.World.Clear(); // start a new level
+    PropertiesUpdated();
 
     GameLib.Input.Input.Initialize();
     Video.Initialize();
@@ -104,6 +133,7 @@ class App
       @"(smarm-setup-data (prop 'dataPath' 'string' (default './'))
                           (prop 'editorPath' 'string' (default 'PathToPhotoshopExecutable'))
                           (prop 'spritePath' 'string' (default './images/sprites/'))
+                          (prop 'tileMegs' 'int' (range 4 2048) (default 16))
                           (prop 'antialias' 'bool'))"))), null);
     if(File.Exists("setup"))
     { FileStream file = File.Open("setup", FileMode.Open, FileAccess.Read);
@@ -126,7 +156,7 @@ class App
 
   static SmarmDesktop desktop = new SmarmDesktop();
   static Object setup;
-  static int    oldHeight, oldWidth;
+  static int    oldHeight, oldWidth, maxTiles;
   static bool   fullscreen;
 }
 

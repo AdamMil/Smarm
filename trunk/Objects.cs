@@ -32,8 +32,8 @@ class Sprite
     { string name = list.GetString(0);
       surface = LoadImage(App.SmarmPath+name, false);
       if(surface==null) surface=LoadImage(App.SpritePath+name);
-      width = surface.Width;
-      if(list.Contains("colorkey")) surface.ColorKey = list["colorkey"].ToColor();
+      list  = list["elementwidth"];
+      width = list==null ? surface.Width : list.GetInt(0);
     }
     else
     { string dir=App.SmarmPath, fn = obj.Name+".sps";
@@ -53,9 +53,11 @@ class Sprite
       { surface = LoadImage(App.SpritePath+obj.Name+".png");
         width   = surface.Width;
       }
-      if(!surface.UsingAlpha) surface.ColorKey = Color.Magenta;
     }
     
+    if(obj.Contains("colorkey")) surface.ColorKey = obj["colorkey"].ToColor();
+    else if(!surface.UsingAlpha) surface.ColorKey = Color.Magenta;
+
     if(surface.UsingAlpha)
     { hlSurface = surface.Clone();
       Primitives.FilledBox(hlSurface, hlSurface.Bounds, Color.FromArgb(128, 255, 255, 255));
