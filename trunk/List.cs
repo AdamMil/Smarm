@@ -10,7 +10,7 @@ class List : IEnumerable
   public List(string name) { this.name=name; }
   public List(Stream stream) { name=string.Empty; Read(new StreamReader(stream)); }
 
-  public object this[int i] { get { return items[i]; } set { items[i]=value; } }
+  public object this[int index] { get { return items[index]; } set { items[index]=value; } }
 
   public List this[string name]
   { get
@@ -19,15 +19,21 @@ class List : IEnumerable
     }
   }
 
-  public object First  { get { return items[0]; } }
-  public int    Length { get { return items.Count; } }
+  public int Length { get { return items.Count; } }
+
   public string Name
   { get { return name; }
     set { if(value==null) throw new ArgumentNullException("Name"); name=value; }
   }
 
   public void Add(object o) { if(o==null) throw new ArgumentNullException(); items.Add(o); }
+
   public void Clear() { Name=string.Empty; items.Clear(); }
+  
+  public int GetInt(int index) { return (int)(double)items[index]; }
+  public List GetList(int index) { return (List)items[index]; }
+  public string GetString(int index) { return (string)items[index]; }
+
   public void Load(Stream stream)
   { Clear();
     Read(new StreamReader(stream));
