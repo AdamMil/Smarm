@@ -38,7 +38,7 @@ class World : IDisposable
 
   public const int NoLayer=-2, AllLayers=-1;
 
-  public Color BackColor { get { return backColor; } set { backColor=value; } }
+  public Color BackColor { get { return (Color)options["bgColor"]; } set { options["bgColor"]=value; } }
   public bool ChangedSinceSave { get { return changed; } set { changed=value; } }
 
   public int Height
@@ -59,6 +59,7 @@ class World : IDisposable
 
   public Layer[] Layers { get { return layers; } }
   public IList Polygons { get { return polygons; } }
+  public Object Options { get { return options; } }
 
   public void AddLayer(Layer layer)
   { Layer[] narr = new Layer[layers.Length+1];
@@ -76,6 +77,7 @@ class World : IDisposable
     if(!Directory.Exists(path)) Directory.CreateDirectory(path);
     else foreach(string fn in Directory.GetFiles(path, "layer*.png")) File.Delete(fn);
 
+    Color backColor = BackColor;
     StreamWriter writer = new StreamWriter(path+"world.lev");
     writer.WriteLine("(world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
@@ -133,7 +135,7 @@ class World : IDisposable
     image.Layers[layers.Length+1].Opacity = 84;
     codec.StartWriting(image, file);
 
-    surface.Fill(backColor);
+    surface.Fill(BackColor);
     codec.WriteLayer(surface);
 
     foreach(Layer layer in layers)
@@ -183,21 +185,20 @@ class World : IDisposable
       for(int i=0; i<image.Layers.Length; i++)
       { PSDLayer layer = image.Layers[i];
         if(layer.Name.IndexOf("Layer ")==0 && layer.Name.Length>6)
-        { try
-          { int n = int.Parse(layer.Name.Substring(6));
-            codec.ReadNextLayer();
+        { int n;
+          try { n = int.Parse(layer.Name.Substring(6)); }
+          catch { codec.SkipLayer(); continue; }
 
-            if(layer.Surface!=null)
-            { surface.Fill(0);
-              layer.Surface.UsingAlpha = false;
-              layer.Surface.Blit(surface, layer.Location);
-              layer.Surface.Dispose();
-              layers[n].InsertSurface(surface, exp.Rect.X*4, exp.Rect.Y*4);
-            }
-            else if(layers[n].Width!=0) layers[n].ClearTiles(exp.Rect);
+          codec.ReadNextLayer();
+          if(layer.Surface!=null)
+          { surface.Fill(0);
+            layer.Surface.UsingAlpha = false;
+            layer.Surface.Blit(surface, layer.Location);
+            layer.Surface.Dispose();
+            layers[n].InsertSurface(surface, exp.Rect.X*4, exp.Rect.Y*4);
             changed = true;
           }
-          catch { codec.SkipLayer(); }
+          else if(layers[n].Width!=0) { layers[n].ClearTiles(exp.Rect); changed=true; }
         }
         else codec.SkipLayer();
       }
@@ -227,7 +228,6 @@ class World : IDisposable
     { Clear();
       zip = new ZipFile(path+"images.zip");
       List level = new List(fs);
-      if(level.Contains("bgcolor")) backColor = level["bgcolor"].ToColor();
       foreach(List list in level)
       { if(list.Name=="layer")
         { Layer layer = new Layer(this, list);
@@ -236,6 +236,7 @@ class World : IDisposable
           else layers[z] = layer;
         }
         else if(list.Name=="polygon") polygons.Add(new Polygon(list));
+        else if(list.Name==optionsDef.Name) options = new Object(optionsDef, list);
       }
       basePath = path;
       tempPath = false;
@@ -258,9 +259,11 @@ class World : IDisposable
     ZipOutputStream zip = new ZipOutputStream(File.Open(path+"_images.zip", FileMode.Create));
     zip.SetLevel(5);
 
+    Color backColor = BackColor;
     StreamWriter writer = new StreamWriter(path+"definition");
     writer.WriteLine("(smarm-world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
+    options.Save(writer);
     for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, zip, i, false);
     foreach(Polygon poly in polygons) poly.Save(writer);
     writer.Write(')');
@@ -294,8 +297,8 @@ class World : IDisposable
     layers = new Layer[8];
     for(int i=0; i<layers.Length; i++) layers[i] = new Layer(this);
     polygons.Clear();
-    backColor=Color.Black;
     changed=false;
+    options=new Object(optionsDef);
     nextTile=0;
   }
 
@@ -326,9 +329,13 @@ class World : IDisposable
 
   ArrayList polygons = new ArrayList();
   Layer[] layers;
-  Color backColor;
+  Object options;
   int nextTile;
   bool changed, tempPath;
+
+  static ObjectDef optionsDef = new ObjectDef(new List(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(
+      @"(level-options (prop 'bgColor' 'color')
+                       (prop 'name' 'string' (default 'Level name')))"))), null);
 }
 
 } // namespace Smarm

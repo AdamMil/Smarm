@@ -16,6 +16,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
+// TODO: make shift-click align object with the last object placed
 using System;
 using System.Drawing;
 using GameLib;
@@ -72,13 +73,13 @@ class TopBar : ContainerControl
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
     menu.Add(new MenuItem("Edit in paint program", 'E', new KeyCombo(Key.F5))).Click += new EventHandler(editRect_OnClick);
     menu.Add(new MenuItem("Object properties...", 'O', new KeyCombo(Key.F4))).Click += new EventHandler(objectProps_OnClick);
-    menu.Add(new MenuItem("Level properties...", 'L'));
+    menu.Add(new MenuItem("Level properties...", 'L')).Click += new EventHandler(levelProps_OnClick);
     menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
-    menu.Add(new MenuItem("Toggle Fullscreen", 'F', new KeyCombo(KeyMod.Alt, Key.Enter))).Click += new EventHandler(toggleFullscreen_OnClick);
-    menu.Add(new MenuItem("Toggle Objects", 'O', new KeyCombo(Key.F2))).Click += new EventHandler(toggleObjects_OnClick);
-    menu.Add(new MenuItem("Toggle Polygons", 'P', new KeyCombo(Key.F3))).Click += new EventHandler(togglePolygons_OnClick);
+    menu.Add(new MenuItem("Toggle fullscreen", 'F', new KeyCombo(KeyMod.Alt, Key.Enter))).Click += new EventHandler(toggleFullscreen_OnClick);
+    menu.Add(new MenuItem("Toggle objects", 'O', new KeyCombo(Key.F2))).Click += new EventHandler(toggleObjects_OnClick);
+    menu.Add(new MenuItem("Toggle polygons", 'P', new KeyCombo(Key.F3))).Click += new EventHandler(togglePolygons_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Add(new MenuItem("Dummy item"));
@@ -209,6 +210,7 @@ class TopBar : ContainerControl
 
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
   void objectProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowObjectProperties(); }
+  void levelProps_OnClick(object sender, EventArgs e) { App.Desktop.World.ShowLevelProperties(); }
   void smarmProps_OnClick(object sender, EventArgs e)
   { if(new ObjectProperties(App.SetupObject).Show(Desktop)) App.PropertiesUpdated();
   }
@@ -485,6 +487,13 @@ class WorldDisplay : Control
     else world.Save(directory);
   }
   
+  public void ShowLevelProperties()
+  { if(new ObjectProperties(world.Options).Show(Desktop))
+    { BackColor = world.BackColor;
+      world.ChangedSinceSave = true;
+    }
+  }
+
   public void ShowObjectProperties()
   { if(selectedObject!=null)
     { if(selectedObject.Type.Properties.Length>0)
@@ -651,7 +660,8 @@ class WorldDisplay : Control
       }
       else e.Handled = false;
     }
-    else if(editMode==EditMode.Polygons)
+    if(e.Handled) goto done;
+    if(editMode==EditMode.Polygons)
     { e.Handled=true;
       if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
       else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedPoly!=null)
@@ -678,6 +688,7 @@ class WorldDisplay : Control
       else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedObject!=null) SelectObject(null);
       else e.Handled=false;
     }
+    done:
     if(e.Handled) Desktop.StopKeyRepeat();
     base.OnKeyDown(e);
   }
@@ -1176,7 +1187,13 @@ class ObjectProperties : Form
         }
         else
         { TextBox tb = new TextBox();
-          if(obj[prop.Name]!=null) tb.Text = obj[prop.Name].ToString();
+          if(obj[prop.Name]!=null)
+          { if(prop.Type=="color")
+            { Color c = (Color)obj[prop.Name];
+              tb.Text = string.Format("{0},{1},{2}", c.R, c.G, c.B);
+            }
+            else tb.Text = obj[prop.Name].ToString();
+          }
           ctl = tb;
         }
         ctl.Bounds = new Rectangle(label.Right+xpad, height, 200, yinc);

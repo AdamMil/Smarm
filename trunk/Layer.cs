@@ -267,7 +267,7 @@ class Layer : IDisposable
   // insert a surface name into the full-sized array (used during level loading)
   void InsertSurface(string name, Point pos)
   { int x=pos.X/PartWidth, y=pos.Y/PartHeight;
-    full = ResizeTo(full, x, y);
+    full = ResizeTo(full, x+1, y+1);
     full[y, x] = name;
     if(x+1>width)  width=x+1;
     if(y+1>height) height=y+1;
@@ -381,7 +381,7 @@ class Layer : IDisposable
     if(width>owidth || height>oheight)
     { int nw=width>owidth ? Math.Max(width, owidth*2) : owidth;
       int nh=height>oheight ? Math.Max(height, oheight*2) : oheight;
-      string[,] narr = new string[nw, nh];
+      string[,] narr = new string[nh, nw];
       for(int y=0; y<oheight; y++) Array.Copy(full, y*owidth, narr, y*nw, owidth);
       return narr;
     }
