@@ -834,7 +834,8 @@ class WorldDisplay : Control
           }
         }
       }
-      else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) && ClickObject(pt, false))
+      else if(editMode==EditMode.Objects && subMode==SubMode.None && e.OnlyPressed(MouseButton.Left) &&
+              ClickObject(pt, false))
       { subMode=SubMode.DragSelected;
         goto done;
       }
@@ -972,9 +973,9 @@ class WorldDisplay : Control
   bool ClickObject(Point point, bool alwaysAdd)
   { foreach(Object obj in world.Layers[layer].Objects)
       if(obj.Bounds.Contains(point))
-      { if(!alwaysAdd && !Keyboard.HasAnyMod(KeyMod.Shift)) SelectObject(null);
-        if(!selected.Objs.Contains(obj))
-        { selected.Objs.Add(obj);
+      { if(!selected.Objs.Contains(obj))
+        { if(!alwaysAdd && !Keyboard.HasAnyMod(KeyMod.Shift)) SelectObject(null);
+          selected.Objs.Add(obj);
           Invalidate(obj);
           UpdateObjectText();
         }
