@@ -67,7 +67,8 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Load", 'L', new KeyCombo(KeyMod.Ctrl, 'L'))).Click += new EventHandler(load_OnClick);
     menu.Add(new MenuItem("Save", 'S', new KeyCombo(KeyMod.Ctrl, 'S'))).Click += new EventHandler(save_OnClick);
     menu.Add(new MenuItem("Save As...", 'A')).Click += new EventHandler(saveAs_OnClick);
-    menu.Add(new MenuItem("Compile...", 'C')).Click += new EventHandler(compile_OnClick);
+    menu.Add(new MenuItem("Compile...", 'C')).Click += new EventHandler(compileInto_OnClick);
+    menu.Add(new MenuItem("Recompile", 'R', new KeyCombo(KeyMod.Ctrl, 'R'))).Click += new EventHandler(compile_OnClick);
     menu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     menu = menuBar.Add(new Menu("Edit", new KeyCombo(KeyMod.Alt, 'E')));
@@ -134,7 +135,13 @@ class TopBar : ContainerControl
   public MenuBar MenuBar { get { return menuBar; } }
   public MenuLabel TypeMenu { get { return lblType; } }
 
-  public void New() { if(CanUnloadLevel()) App.Desktop.World.Clear(); }
+  public void New()
+  { if(CanUnloadLevel())
+    { App.Desktop.World.Clear();
+      lastPath    = null;
+      lastCompile = null;
+    }
+  }
 
   public void Load()
   { App.Desktop.StopKeyRepeat();
@@ -142,6 +149,7 @@ class TopBar : ContainerControl
     if(file!="")
     { App.Desktop.World.Load(file);
       lastPath = file;
+      lastCompile = null;
     }
   }
 
@@ -160,13 +168,18 @@ class TopBar : ContainerControl
   }
 
   public void Compile()
-  { App.Desktop.StopKeyRepeat();
-    string file = FileChooser.Save(Desktop, FileType.Directory);
-    if(file=="") MessageBox.Show(Desktop, "Aborted", "Compilation aborted.");
-    else if(MessageBox.Show(Desktop, "Compile?", "Compile level into '"+file+"'?", MessageBoxButtons.YesNo)==0)
-    { App.Desktop.World.Save(file, true);
-      App.Desktop.StatusText = "Level compiled into "+file+".";
+  { if(lastCompile==null) { CompileInto(); }
+    else if(MessageBox.Show(Desktop, "Compile?", "Compile level into '"+lastCompile+"'?", MessageBoxButtons.YesNo)==0)
+    { App.Desktop.World.Save(lastCompile, true);
+      App.Desktop.StatusText = "Level compiled into "+lastCompile+".";
     }
+  }
+
+  public void CompileInto()
+  { string file = FileChooser.Save(Desktop, FileType.Directory, lastCompile);
+    if(file=="") return;
+    lastCompile = file;
+    Compile();
   }
 
   public void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new SmarmQuitEvent()); }
@@ -196,6 +209,7 @@ class TopBar : ContainerControl
   void save_OnClick(object sender, EventArgs e)   { Save(); }
   void saveAs_OnClick(object sender, EventArgs e) { SaveAs(); }
   void compile_OnClick(object sender, EventArgs e) { Compile(); }
+  void compileInto_OnClick(object sender, EventArgs e) { CompileInto(); }
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
   void editRect_OnClick(object sender, EventArgs e) { App.Desktop.World.EditRect(); }
@@ -264,7 +278,7 @@ class TopBar : ContainerControl
   Label  lblMouse=new Label();
   MenuBar menuBar=new MenuBar();
   
-  string lastPath;
+  string lastPath, lastCompile;
 }
 #endregion
 
