@@ -135,7 +135,7 @@ class Layer : IDisposable
     for(int x=0; x<surfaces.GetLength(1); x++)
       for(int y=0; y<surfaces.GetLength(0); y++)
         if(surfaces[y, x]!=null && !IsEmpty(surfaces[y, x]))
-        { string fn = (compile ? "clayer" : "layer") + layerNum + '_' + img++ + ".png";
+        { string fn = string.Format("layer{0}_{1}.png", layerNum, img++);
           if(!tiles)
           { writer.WriteLine(header);
             writer.WriteLine("    (tiles");

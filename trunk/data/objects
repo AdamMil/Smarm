@@ -21,4 +21,4 @@
     (baldy))
   (polygons
     (solid (color 0 255 0))
-    (water (color 0 0 255))))
+    (water (color 0 64 255))))
