@@ -86,7 +86,7 @@ class World : IDisposable
     GameLib.Mathematics.TwoD.Polygon ccPoly = new GameLib.Mathematics.TwoD.Polygon();
     foreach(Polygon poly in polygons)
     { if(poly.Points.Length<3) continue;
-      foreach(Point pt in poly.Points) ccPoly.AddPoint(pt.X, pt.Y);
+      foreach(Point pt in poly.Points) ccPoly.AddPoint(pt);
       GameLib.Mathematics.TwoD.Polygon[] cvPolys = ccPoly.SplitIntoConvexPolygons();
       
       foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in cvPolys)
@@ -261,7 +261,7 @@ class World : IDisposable
   }
 
   public void Render(GameLib.Video.Surface dest, int sx, int sy, Rectangle drect, ZoomMode zoom,
-                     int objectLayer, Object hilite)
+                     int objectLayer, Object[] hilite)
   { for(int i=0; i<layers.Length; i++)
       layers[i].Render(dest, sx, sy, drect, zoom, objectLayer==AllLayers || objectLayer==i, hilite, true);
   }

@@ -74,7 +74,7 @@ class Layer : IDisposable
 
   /* render the world starting at full-coord fx,fy into dest's drect using the zoom level specified */
   public void Render(Surface dest, int fx, int fy, Rectangle drect, ZoomMode zoom,
-                     bool renderObjects, Object hilite, bool blend)
+                     bool renderObjects, Object[] hilite, bool blend)
   { fx /= (int)zoom; fy /= (int)zoom; // convert to zoomed coordinates
     int ozx=fx, ozy=fy, bx=fx/PartWidth, by=fy/PartHeight, bw=(width+(int)zoom-1)/(int)zoom, bh=(height+(int)zoom-1)/(int)zoom;
     fx %= PartWidth; fy %= PartHeight; // fx,fy become the offset into the first block
@@ -113,17 +113,18 @@ class Layer : IDisposable
     if(renderObjects) RenderObjects(dest, ozx, ozy, drect, zoom, hilite);
   }
 
-  public void RenderObjects(Surface dest, int zx, int zy, Rectangle drect, ZoomMode zoom, Object hilite)
+  public void RenderObjects(Surface dest, int zx, int zy, Rectangle drect, ZoomMode zoom, Object[] hilite)
   { RenderObjects(dest, zx, zy, drect, zoom, hilite, App.Desktop.Font);
   }
 
   public void RenderObjects(Surface dest, int zx, int zy, Rectangle drect, ZoomMode zoom,
-                            Object hilite, GameLib.Fonts.Font font)
+                            Object[] hilite, GameLib.Fonts.Font font)
   { if(zoom==ZoomMode.Normal)
       foreach(Object o in objects)
       { Rectangle bounds = o.Bounds;
         bounds.Offset(drect.X-zx, drect.Y-zy);
-        if(bounds.IntersectsWith(drect)) o.Blit(dest, bounds.X, bounds.Y, o==hilite);
+        if(bounds.IntersectsWith(drect))
+          o.Blit(dest, bounds.X, bounds.Y, hilite!=null && Array.IndexOf(hilite, o)!=-1);
       }
     else
       foreach(Object obj in objects)
