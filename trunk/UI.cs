@@ -119,7 +119,7 @@ class TopBar : ContainerControl
   }
 
   void Load()
-  { 
+  { string file = FileChooser.Load(Desktop, true);
   }
 
   bool Save()
@@ -137,7 +137,7 @@ class TopBar : ContainerControl
   }
   
   bool CanUnloadLevel()
-  { /*if(App.Desktop.World.ChangedSinceSave)*/
+  { if(App.Desktop.World.ChangedSinceSave)
     { int button = MessageBox.Show(Desktop, "Save changes?", "This level has been altered. Save changes?",
                                    MessageBoxButtons.YesNoCancel);
       if(button==0) return Save();
@@ -225,6 +225,79 @@ class WorldDisplay : Control
 #endregion
 
 #region FileChooser
+class FileChooser : Form
+{ public FileChooser() : this(System.IO.Directory.GetCurrentDirectory()) { }
+  public FileChooser(string initialPath)
+  { path.Text=initialPath;
+    KeyPreview=true;
+    Controls.AddRange(label, path);
+  }
+
+  public bool AllowDirectory { get { return dirok; } set { dirok=value; } }
+  public bool ExistingOnly { get { return existing; } set { existing=value; } }
+  public bool OverwriteWarning { get { return warn; } set { warn=value; } }
+
+  public string Show(DesktopControl desktop)
+  { GameLib.Fonts.Font font = RawFont==null ? desktop.Font : RawFont;
+    if(font!=null)
+    { int pad=6, sep=4;
+      label.Text = string.Format("Choose file{0} and press enter:", dirok ? " or directory" : "");
+      int width  = Math.Max(font.CalculateSize(label.Text).Width+pad*2, desktop.Width/2);
+      int height = pad*2+sep+font.LineSkip*5/2;
+
+      Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
+      label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip);
+      path.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
+      path.Focus();
+    }
+    ShowDialog(desktop);
+    return path.Text;
+  }
+
+  protected override void OnKeyDown(KeyEventArgs e)
+  { if(!e.Handled && e.KE.KeyMods==KeyMod.None)
+    { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+      { if(!existing) Close();
+        else
+          try
+          { if(dirok && System.IO.Directory.Exists(path.Text) || System.IO.File.Exists(path.Text))
+              Close();
+          }
+          catch { }
+        e.Handled=true;
+      }
+      else if(e.KE.Key==Key.Tab)
+      { e.Handled=true;
+      }
+      else if(e.KE.Key==Key.Escape)
+      { path.Text="";
+        Close();
+        e.Handled=true;
+      }
+    }
+    base.OnKeyDown(e);
+  }
+
+  public static string Load(DesktopControl desktop, bool dirOk) { return Load(desktop, dirOk, null); }
+  public static string Load(DesktopControl desktop, bool dirOk, string initialPath)
+  { FileChooser file = initialPath==null ? new FileChooser() : new FileChooser(initialPath);
+    file.ExistingOnly = true;
+    file.AllowDirectory = dirOk;
+    return file.Show(desktop);
+  }
+  
+  public static string Save(DesktopControl desktop, bool dirOk) { return Save(desktop, dirOk, null); }
+  public static string Save(DesktopControl desktop, bool dirOk, string initialPath)
+  { FileChooser file = initialPath==null ? new FileChooser() : new FileChooser(initialPath);
+    file.OverwriteWarning = true;
+    file.AllowDirectory = dirOk;
+    return file.Show(desktop);
+  }
+
+  Label   label = new Label();
+  TextBox path  = new TextBox();
+  bool    dirok, existing, warn;
+}
 #endregion
 
 #region SmarmDesktop
