@@ -51,7 +51,7 @@ class App
       { fullscreen=value;
         if(fullscreen)
         { oldWidth=desktop.Width; oldHeight=desktop.Height;
-          SetMode(320, 240);
+          SetMode(640, 480);
         }
         else SetMode(oldWidth, oldHeight);
       }
