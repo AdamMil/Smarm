@@ -1,3 +1,4 @@
+// TODO: fix display of "toggle antialias" menu item
 using System;
 using System.Drawing;
 using GameLib;
@@ -45,11 +46,11 @@ class TopBar : ContainerControl
 
     #region Add controls
     fileMenu = new Menu();
-    fileMenu.Add(new MenuItem("New", 'N')).Click += new EventHandler(new_OnClick);
-    fileMenu.Add(new MenuItem("Load", 'L')).Click += new EventHandler(load_OnClick);
-    fileMenu.Add(new MenuItem("Save", 'S')).Click += new EventHandler(save_OnClick);
+    fileMenu.Add(new MenuItem("New", 'N', new KeyCombo(KeyMod.Ctrl, 'N'))).Click += new EventHandler(new_OnClick);
+    fileMenu.Add(new MenuItem("Load", 'L', new KeyCombo(KeyMod.Ctrl, 'L'))).Click += new EventHandler(load_OnClick);
+    fileMenu.Add(new MenuItem("Save", 'S', new KeyCombo(KeyMod.Ctrl, 'S'))).Click += new EventHandler(save_OnClick);
     fileMenu.Add(new MenuItem("Save As", 'A')).Click += new EventHandler(saveAs_OnClick);
-    fileMenu.Add(new MenuItem("Exit", 'X')).Click += new EventHandler(exit_OnClick);
+    fileMenu.Add(new MenuItem("Exit", 'X', new KeyCombo(KeyMod.Ctrl, 'X'))).Click += new EventHandler(exit_OnClick);
 
     editMenu = new Menu();
     editMenu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
@@ -58,7 +59,7 @@ class TopBar : ContainerControl
     viewMenu.Popup += new EventHandler(viewMenu_Popup);
     viewMenu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
     viewMenu.Add(new MenuItem("Toggle Antialias", 'A')).Click += new EventHandler(toggleAntialias_OnClick);
-    
+
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
     
@@ -269,7 +270,10 @@ class BottomBar : ContainerControl
 #region WorldDisplay
 enum EditMode { Objects, Polygons, ViewOnly };
 class WorldDisplay : Control
-{ public WorldDisplay() { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus; }
+{ public WorldDisplay()
+  { Style=ControlStyle.Clickable|ControlStyle.Draggable|ControlStyle.CanFocus|ControlStyle.BackingSurface;
+    BackColor=Color.Black;
+  }
 
   public EditMode EditMode
   { get { return editMode; }
@@ -289,20 +293,25 @@ class WorldDisplay : Control
 
   protected override void OnPaint(PaintEventArgs e)
   { base.OnPaint(e);
-    world.Render(e.Surface, x+e.WindowRect.X, y+e.WindowRect.Y, e.DisplayRect);
+    world.Render(e.Surface, x+e.DisplayRect.X, y+e.DisplayRect.Y, e.DisplayRect);
     if(editMode==EditMode.Polygons)
-    { int xoff=Left-x, yoff=Top-y;
-      foreach(Polygon poly in world.Polygons)
-      { Color c = poly==selectedPoly ? Color.FromArgb(0, 255, 0) : Color.FromArgb(0, 192, 0);
-        Point lp = new Point();
-        for(int i=0; i<poly.Points.Length; i++)
-        { Point p2 = new Point(poly.Points[i].X+xoff, poly.Points[i].Y+yoff);
-          Primitives.Box(e.Surface, p2.X-1, p2.Y-1, p2.X+1, p2.Y+1, c);
-          if(i>0) Primitives.Line(e.Surface, lp, p2, c);
-          lp = p2;
+    { foreach(Polygon poly in world.Polygons)
+      { Color c = poly.Points.Length<3 ? poly==selectedPoly ? Color.FromArgb(255, 0, 0) : Color.FromArgb(192, 0, 0)
+                                       : poly==selectedPoly ? Color.FromArgb(0, 255, 0) : Color.FromArgb(0, 192, 0);
+        if(poly.Points.Length<3)
+        { if(poly.Points.Length>1)
+            Primitives.Line(e.Surface, poly.Points[0].X-x, poly.Points[0].Y-y,
+                            poly.Points[1].X-x, poly.Points[1].Y-y, c);
         }
-        if(poly.Points.Length>2)
-          Primitives.Line(e.Surface, lp.X, lp.Y, poly.Points[0].X+xoff, poly.Points[0].Y+yoff, c);
+        else
+        { Point[] points = (Point[])poly.Points.Clone();
+          for(int i=0; i<points.Length; i++) points[i].Offset(-x, -y);
+          Primitives.FilledPolygon(e.Surface, points, Color.FromArgb(64, c));
+        }
+        for(int i=0; i<poly.Points.Length; i++)
+        { Point p = new Point(poly.Points[i].X-x, poly.Points[i].Y-y);
+          Primitives.Box(e.Surface, p.X-1, p.Y-1, p.X+1, p.Y+1, c);
+        }
       }
     }
   }
@@ -316,18 +325,22 @@ class WorldDisplay : Control
   protected override void OnMouseClick(ClickEventArgs e)
   { if(editMode==EditMode.Polygons)
     { if(e.CE.Button==0)
-      { if(subMode==SubMode.None)
-        { selectedPoly = new Polygon();
-          world.Polygons.Add(selectedPoly);
-          subMode = SubMode.NewPoly;
+      { e.CE.X+=x; e.CE.Y+=y;
+        if(subMode==SubMode.None)
+        { if(!ClickVertex(e.CE.Point))
+          { selectedPoly = new Polygon();
+            world.Polygons.Add(selectedPoly);
+            subMode = SubMode.NewPoly;
+          }
         }
-        selectedPoly.AddPoint(new Point(e.CE.X+x, e.CE.Y+y));
+        if(subMode==SubMode.NewPoly) selectedPoly.AddPoint(e.CE.Point);
         Invalidate();
         e.Handled = true;
       }
       else if(e.CE.Button==1 && subMode==SubMode.NewPoly)
       { selectedPoly.RemoveLastPoint();
         Invalidate();
+        e.Handled=true;
       }
     }
     base.OnMouseClick(e);
@@ -335,49 +348,39 @@ class WorldDisplay : Control
 
   protected override void OnKeyDown(KeyEventArgs e)
   { if(editMode==EditMode.Polygons)
-    { if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
+    { e.Handled=true;
+      if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
+      else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+      { selectedPoly = null;
+        subMode = SubMode.None;
+        Invalidate();
+      }
       else if(subMode==SubMode.NewPoly)
       { if(e.KE.Key==Key.Backspace)
         { if(selectedPoly.Points.Length==1) RemoveSelectedPoly();
           else selectedPoly.RemoveLastPoint();
           Invalidate();
         }
-        else if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
-        { selectedPoly = null;
-          subMode = SubMode.None;
-          Invalidate();
-        }
         else if(e.KE.Key==Key.Escape) RemoveSelectedPoly();
+        else e.Handled=false;
       }
     }
     base.OnKeyDown(e);
   }
   
   protected override void OnDragStart(DragEventArgs e)
-  { if(editMode==EditMode.ViewOnly)
-    { if(e.Buttons != 4) e.Cancel=true;
-    }
-    else if(editMode==EditMode.Polygons)
+  { if(editMode==EditMode.Polygons)
     { if(subMode==SubMode.None)
       { if(e.Buttons==1)
         { e.Start.X += x;
           e.Start.Y += y;
-          foreach(Polygon poly in world.Polygons)
-            for(int i=0; i<poly.Points.Length; i++)
-            { Point pt = poly.Points[i];
-              if(e.Start.X>=pt.X-1 && e.Start.X<=pt.X+1 && e.Start.Y>=pt.Y-1 && e.Start.Y<=pt.Y+1)
-              { selectedPoly = poly;
-                selectedPoint = i;
-                subMode = SubMode.DragPoint;
-                goto done;
-              }
-            }
-          e.Cancel=true;
+          if(ClickVertex(e.Start)) subMode=SubMode.DragPoint;
+          else e.Cancel=true;
+          goto done;
         }
-        if(e.Buttons != 4) e.Cancel=true;
       }
-      else if(e.Buttons != 4) e.Cancel=true;
     }
+    if(e.Buttons != 4) e.Cancel=true;
     done:
     base.OnDragStart(e);
   }
@@ -397,6 +400,19 @@ class WorldDisplay : Control
   }
 
   enum SubMode { None, NewPoly, DragPoint };
+
+  bool ClickVertex(Point pt)
+  { foreach(Polygon poly in world.Polygons)
+      for(int i=0; i<poly.Points.Length; i++)
+      { Point p = poly.Points[i];
+        if(pt.X>=p.X-1 && pt.X<=p.X+1 && pt.Y>=p.Y-1 && pt.Y<=p.Y+1)
+        { selectedPoly = poly;
+          selectedPoint = i;
+          return true;
+        }
+      }
+    return false;
+  }
 
   void DragScroll(DragEventArgs e)
   { x -= e.End.X-e.Start.X;
