@@ -19,6 +19,14 @@ class World : IDisposable
 
   public bool ChangedSinceSave { get { return changed; } }
 
+  public void Clear()
+  { if(layers!=null)
+    { foreach(Layer layer in layers) if(layer!=null) layer.Dispose();
+      layers=null;
+      changed=false;
+    }
+  }
+  
   public void Load(string directory)
   { if(!Directory.Exists(directory))
       throw new DirectoryNotFoundException(string.Format("Directory '{0}' not found", directory));
@@ -42,19 +50,10 @@ class World : IDisposable
         }
         else if(list.Name=="polygon") polygons.Add(new Polygon(list));
       }
-      changed=false;
     }
     finally { fs.Close(); }
   }
 
-  void Clear()
-  { if(layers!=null)
-    { foreach(Layer layer in layers) if(layer!=null) layer.Dispose();
-      layers=null;
-      changed=true;
-    }
-  }
-  
   public void Dispose()
   { Clear();
     GC.SuppressFinalize(this);

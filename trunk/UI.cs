@@ -45,6 +45,7 @@ class TopBar : ContainerControl
 
     #region Add controls
     fileMenu = new Menu();
+    fileMenu.Add(new MenuItem("New", 'N')).Click += new EventHandler(new_OnClick);
     fileMenu.Add(new MenuItem("Load", 'L')).Click += new EventHandler(load_OnClick);
     fileMenu.Add(new MenuItem("Save", 'S')).Click += new EventHandler(save_OnClick);
     fileMenu.Add(new MenuItem("Save As", 'A')).Click += new EventHandler(saveAs_OnClick);
@@ -128,11 +129,29 @@ class TopBar : ContainerControl
     }
   }
 
+  void New()
+  { if(CanUnloadLevel())
+    { App.Desktop.World.Clear();
+      App.Desktop.WorldDisplay.Invalidate();
+    }
+  }
+
   void Load()
   { string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
     if(file!="")
-    { lastPath = file;
-      App.Desktop.StatusText = lastPath+" loaded.";
+    { try
+      { App.Desktop.World.Load(file);
+        lastPath = file;
+        App.Desktop.StatusText = lastPath+" loaded.";
+      }
+      catch(Exception e)
+      { App.Desktop.World.Clear();
+        MessageBox.Show(Desktop, "Error", string.Format("An error occurred while loading {0} -- {1}", file,
+                                                        e.Message));
+        App.Desktop.StatusText = file+" failed to load.";
+      }
+
+      App.Desktop.WorldDisplay.Invalidate();
     }
   }
 
@@ -172,6 +191,7 @@ class TopBar : ContainerControl
     OpenMenu((Menu)button.Tag, button);
   }
 
+  void new_OnClick(object sender, EventArgs e)   { New(); }
   void load_OnClick(object sender, EventArgs e)   { Load(); }
   void save_OnClick(object sender, EventArgs e)   { Save(); }
   void saveAs_OnClick(object sender, EventArgs e) { SaveAs(); }
@@ -294,7 +314,8 @@ class FileChooser : Form
   protected override void OnKeyDown(KeyEventArgs e)
   { if(!e.Handled && e.KE.KeyMods==KeyMod.None)
     { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
-      { try
+      { Desktop.StopKeyRepeat();
+        try
         { bool exists =
             (type&FileType.Directory)!=0 && System.IO.Directory.Exists(path.Text) ||
             (type&FileType.File)!=0 && System.IO.File.Exists(path.Text);
@@ -310,7 +331,8 @@ class FileChooser : Form
         e.Handled=true;
       }
       else if(e.KE.Key==Key.Tab)
-      { string path = this.path.Text;
+      { Desktop.StopKeyRepeat();
+        string path = this.path.Text;
         try
         { if(!System.IO.File.Exists(path))
           { int pos = path.LastIndexOfAny(new char[] { '/', '\\' });
@@ -329,19 +351,20 @@ class FileChooser : Form
                 if(names.Length>0)
                 { if(names.Length==1) { SetDefaultLabel(); i=names[0].Length+1; }
                   else
-                  { string name = names[0].ToLower(), sub;
-                    for(i=1; i<=name.Length; i++)
-                    { sub = name.Substring(0, i);
-                      for(int j=1; j<names.Length; j++) if(!names[j].ToLower().StartsWith(sub)) goto alts;
+                  { string name = names[0].ToLower();
+                    for(i=0; i<=name.Length; i++)
+                    { char c = char.ToLower(name[i]);
+                      for(int j=1; j<names.Length; j++)
+                        if(char.ToLower(names[j][i])!=c)
+                        { string alts = string.Empty;
+                          if(i!=0) c = char.ToLower(name[i-1]);
+                          for(j=0; j<names.Length; j++)
+                            if(i==0 || char.ToLower(names[j][i-1])==c) alts += (alts.Length>0 ? " " : "") + names[j];
+                          label.Text = alts;
+                          goto done;
+                        }
                     }
                     SetDefaultLabel();
-                    goto done;
-                    alts:
-                    string alts=string.Empty;
-                    sub = name.Substring(0, i-1);
-                    for(int j=0; j<names.Length; j++)
-                      if(names[j].ToLower().StartsWith(sub)) alts += (alts.Length>0 ? " " : "") + names[j];
-                    label.Text = alts;
                   }
                   done:
                   if(--i>0)
@@ -418,6 +441,7 @@ class SmarmDesktop : DesktopControl
   public TopBar TopBar { get { return topBar; } }
   public string StatusText { get { return bottomBar.StatusText; } set { bottomBar.StatusText=value; } }
   public World World { get { return world.World; } }
+  public WorldDisplay WorldDisplay { get { return world; } }
 
   protected override void OnKeyPress(KeyEventArgs e)
   { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt))
