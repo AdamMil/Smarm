@@ -82,7 +82,23 @@ class World : IDisposable
     writer.WriteLine("(world");
     writer.WriteLine("  (bgcolor {0} {1} {2})", backColor.R, backColor.G, backColor.B);
     for(int i=0; i<layers.Length; i++) layers[i].Save(path, writer, null, i, true);
-    foreach(Polygon poly in polygons) poly.Save(writer);
+
+    GameLib.Mathematics.TwoD.Polygon ccPoly = new GameLib.Mathematics.TwoD.Polygon();
+    foreach(Polygon poly in polygons)
+    { if(poly.Points.Length<3) continue;
+      foreach(Point pt in poly.Points) ccPoly.AddPoint(pt.X, pt.Y);
+      GameLib.Mathematics.TwoD.Polygon[] cvPolys = ccPoly.SplitIntoConvexPolygons();
+      
+      foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in cvPolys)
+      { if(!cvPoly.IsClockwise()) cvPoly.Reverse();
+        Polygon newPoly = new Polygon(poly.Type);
+        for(int i=0; i<cvPoly.Length; i++)
+          newPoly.AddPoint(new Point((int)Math.Round(cvPoly[i].X), (int)Math.Round(cvPoly[i].Y)));
+        newPoly.Save(writer);
+      }
+      ccPoly.Clear();
+    }
+
     writer.Write(')');
     writer.Close();
     changed = false;
