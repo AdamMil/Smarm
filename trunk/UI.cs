@@ -114,23 +114,32 @@ class TopBar : ContainerControl
   void OpenMenu(Menu menu, Button button) { if(menu.Parent==null) menu.Show(button, new Point(0, button.Height)); }
 
   void Load()
-  {
+  { 
   }
 
-  void Save()
-  {
+  bool Save()
+  { return false;
   }
 
-  void SaveAs()
-  {
+  bool SaveAs()
+  { return false;
   }
 
-  void Exit()
-  { if(!App.Desktop.World.ChangedSinceSave) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent());
-  }
+  void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
 
   void ExportRect()
   {
+  }
+  
+  bool CanUnloadLevel()
+  { if(App.Desktop.World.ChangedSinceSave)
+    { int button = MessageBox.Show(this, "Save changes?", "This level has been altered. Save changes?",
+                                   MessageBoxButtons.YesNoCancel);
+      if(button==0) return Save();
+      else if(button==1) return true;
+      else return false;
+    }
+    return true;
   }
 
   #region Event handlers
