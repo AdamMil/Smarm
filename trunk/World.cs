@@ -88,7 +88,7 @@ class World : IDisposable
     foreach(Polygon poly in polygons)
     { if(poly.Points.Length<3) continue;
       foreach(Point pt in poly.Points) ccPoly.AddPoint(pt);
-      foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in ccPoly.SplitIntoConvexPolygons())
+      foreach(GameLib.Mathematics.TwoD.Polygon cvPoly in ccPoly.Split())
       { if(!cvPoly.IsClockwise()) cvPoly.Reverse();
         Polygon newPoly = new Polygon(poly.Type);
         for(int i=0; i<cvPoly.Length; i++) newPoly.AddPoint(cvPoly[i].ToPoint());
