@@ -284,7 +284,7 @@ class Layer : IDisposable
       { if(File.Exists(world.basePath+name))
         { cs.Surface = new Surface(world.basePath+name, ImageType.PNG);
           array[y, x].Changed = cs.Changed = true;
-          cs.Name = world.NextTile.ToString()+".png";
+          //cs.Name = world.NextTile.ToString()+".png"; // this seems like a bug
         }
         else if(world.fsFile!=null)
         { cs.Surface = new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);

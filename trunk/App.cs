@@ -29,7 +29,14 @@ class SmarmQuitEvent : UserEvent { }
 
 class App
 { private App() { }
-  static App() { Init(); desktop = new SmarmDesktop(); }
+  static App()
+  { try { Init(); desktop = new SmarmDesktop(); }
+    catch(Exception e)
+    { StreamWriter sw = new StreamWriter(File.Open("c:/error.txt", FileMode.Create, FileAccess.Write));
+      sw.Write(e.Message);
+      sw.Close();
+    }
+  }
 
   public static SmarmDesktop Desktop { get { return desktop; } }
 
@@ -78,23 +85,29 @@ class App
   }
 
   static bool EventProc(Event e)
-  { if(!desktop.ProcessEvent(e))
-    { if(e is RepaintEvent) Video.Flip();
-      else if(e is ResizeEvent)
-      { ResizeEvent re = (ResizeEvent)e;
-        SetMode(re.Width, re.Height);
+  { try
+    { if(!desktop.ProcessEvent(e))
+      { if(e.Type==EventType.Repaint) Video.Flip();
+        else if(e is ResizeEvent)
+        { ResizeEvent re = (ResizeEvent)e;
+          SetMode(re.Width, re.Height);
+        }
+        else if(e.Type==EventType.Exception) throw ((ExceptionEvent)e).Exception;
+        else if(e.Type==EventType.Quit) App.Desktop.TopBar.Exit(); // no encapsulation, blah
+        else if(e is SmarmQuitEvent) return false;
       }
-      else if(e is ExceptionEvent) throw ((ExceptionEvent)e).Exception;
-      else if(e is QuitEvent) App.Desktop.TopBar.Exit(); // no encapsulation, blah
-      else if(e is SmarmQuitEvent) return false;
+      if(desktop.Updated && Timing.Msecs-lastUpdate>33)
+      { desktop.UpdateDisplay();
+        lastUpdate = Timing.Msecs;
+      }
+      return true;
     }
-    if(desktop.Updated && Timing.Msecs-lastUpdate>33)
-    { desktop.UpdateDisplay();
-      lastUpdate = Timing.Msecs;
+    catch(Exception ex)
+    { MessageBox.Show(Desktop, "Unhandled exception", "An unhandled exception has occurred:\n"+ex.Message);
+      return false;
     }
-    return true;
   }
-  
+
   static bool IdleProc()
   { if(desktop.UpdateDisplay()) lastUpdate = Timing.Msecs;
     return false;
@@ -132,7 +145,7 @@ class App
                           (prop 'editorPath' 'string' (default 'PathToPSDEditor'))
                           (prop 'spritePath' 'string' (default './images/sprites/'))
                           (prop 'compilePost' 'string' (default ''))
-                          (prop 'tileMegs' 'int' (range 4 2048) (default 16))
+                          (prop 'tileMegs' 'int' (range 4 2048) (default 32))
                           (prop 'antialias' 'bool'))"))), null);
     if(File.Exists("setup"))
     { FileStream file = File.Open("setup", FileMode.Open, FileAccess.Read);
