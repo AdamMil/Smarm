@@ -16,8 +16,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
-// TODO: make shift-click align object with the last object placed
-// TODO: prevent multiple simultaneous popups
+// TODO: allow movement of objects between layers
+// TODO: allow naming of layers (optionally in the export as well)
+// TODO: create another editing mode (paint mode)
+
 using System;
 using System.Collections;
 using System.Drawing;
@@ -62,7 +64,7 @@ class TopBar : ContainerControl
     ForeColor = SystemColors.ControlText;
 
     #region Add controls
-    menuBar.Bounds = new Rectangle(0, 1, 140, 30);
+    menuBar.Bounds = new Rectangle(0, 1, 160, 30);
     menuBar.VerticalPadding=4;
 
     MenuBase menu = menuBar.Add(new Menu("File", new KeyCombo(KeyMod.Alt, 'F')));
@@ -87,6 +89,9 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Toggle alltiles", 'P', new KeyCombo(Key.F1))).Click += new EventHandler(toggleTiles_OnClick);
     menu.Add(new MenuItem("Toggle objects", 'O', new KeyCombo(Key.F2))).Click += new EventHandler(toggleObjects_OnClick);
     menu.Add(new MenuItem("Toggle polygons", 'P', new KeyCombo(Key.F3))).Click += new EventHandler(togglePolygons_OnClick);
+    
+    menu = menuBar.Add(new Menu("Debug", new KeyCombo(KeyMod.Alt, 'V')));
+    menu.Add(new MenuItem("Clear zoom tiles")).Click += new EventHandler(clearZoomed_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Add(new MenuItem("Dummy item"));
@@ -284,6 +289,8 @@ class TopBar : ContainerControl
   MessageBox quitBox;
   
   string lastPath, lastCompile;
+
+  private void clearZoomed_OnClick(object sender, EventArgs e) { App.Desktop.World.ClearZoomTiles(); }
 }
 #endregion
 
@@ -445,6 +452,8 @@ class WorldDisplay : Control
     showAllObjects = false;
     Invalidate();
   }
+
+  public void ClearZoomTiles() { world.ClearZoomTiles(); Invalidate(); }
 
   public void EditRect()
   { if(!SelectRectangle("export")) goto abort;

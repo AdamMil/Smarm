@@ -58,6 +58,7 @@ class FSFile : IDisposable
   { AssertOpen();
     if(name.Length>255) throw new ArgumentException("Name cannot be longer than 255 characters");
     if(length<0) throw new ArgumentOutOfRangeException("length", length, "must not be negative");
+    changed = true;
     FSEntry entry;
     { LinkedList.Node node = (LinkedList.Node)names[name];
       entry = node==null ? null : (FSEntry)node.Data;
@@ -105,6 +106,7 @@ class FSFile : IDisposable
   { AssertOpen();
     LinkedList.Node node = (LinkedList.Node)names[name];
     if(node==null) throw new ArgumentException("That file doesn't exist", "name");
+    changed = true;
     names.Remove(name);
 
     LinkedList.Node prev=node.PrevNode, next=node.NextNode;
@@ -145,25 +147,22 @@ class FSFile : IDisposable
 
   public void Save()
   { AssertOpen();
-    int length=0, alloc=0, free=0, nchunks=0, namelen=0;
+    if(!changed) return;
+    int length=0;
     foreach(FSEntry entry in chunks)
     { file.Position = entry.offset;
-nchunks++;
       if(entry.Name==null) file.WriteByte(0);
       else
       { file.WriteByte((byte)entry.Name.Length);
         IOH.WriteString(file, entry.Name);
-namelen += entry.Name.Length;
       }
       IOH.WriteBE4(file, entry.Length);
-if(entry.Name==null) free += entry.Length;
-else alloc += entry.Length;
       IOH.WriteBE4(file, 0); // reserved
       if(entry.EndOffset>length) length=entry.EndOffset;
     }
     file.SetLength(length);
-Console.WriteLine("Wrote: alloc={0}, free={1}, namelen={2}, length={3}, chunks={4}", alloc, free, namelen, length, nchunks);
     file.Flush();
+    changed = false;
   }
 
   void AssertOpen()
@@ -195,6 +194,8 @@ Console.WriteLine("Wrote: alloc={0}, free={1}, namelen={2}, length={3}, chunks={
       else names[name] = node;
       IOH.Skip(file, length);
     }
+
+    changed = false;
   }
 
   internal const int HeaderSize=9; // plus name.Length
@@ -203,6 +204,7 @@ Console.WriteLine("Wrote: alloc={0}, free={1}, namelen={2}, length={3}, chunks={
   Hashtable  names;
   LinkedList chunks;
   ArrayList  free;
+  bool    changed;
 }
 
 } // namespace Smarm
