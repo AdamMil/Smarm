@@ -58,7 +58,7 @@ class TopBar : ContainerControl
     menu.Add(new MenuItem("Smarm properties...", 'S')).Click += new EventHandler(smarmProps_OnClick);
     
     menu = menuBar.Add(new Menu("View", new KeyCombo(KeyMod.Alt, 'V')));
-    menu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
+    menu.Add(new MenuItem("Toggle Fullscreen", 'F', new KeyCombo(KeyMod.Alt, Key.Enter))).Click += new EventHandler(toggleFullscreen_OnClick);
 
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Add(new MenuItem("Dummy item"));
@@ -516,7 +516,7 @@ class WorldDisplay : Control
     else if(editMode==EditMode.Polygons)
     { e.Handled=true;
       if(e.KE.Key==Key.Delete && selectedPoly!=null) RemoveSelectedPoly();
-      else if((e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) && selectedPoly!=null)
+      else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedPoly!=null)
       { Invalidate(selectedPoly);
         selectedPoly = null;
         subMode = SubMode.None;
@@ -538,7 +538,7 @@ class WorldDisplay : Control
         selectedObject=null;
         world.ChangedSinceSave = true;
       }
-      else if((e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) && selectedObject!=null)
+      else if((e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter) && selectedObject!=null)
       { Invalidate(selectedObject);
         selectedObject = null;
       }
@@ -789,7 +789,7 @@ class FileChooser : Form
 
   protected override void OnKeyDown(KeyEventArgs e)
   { if(!e.Handled && e.KE.KeyMods==KeyMod.None)
-    { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+    { if(e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter)
       { Desktop.StopKeyRepeat();
         try
         { bool exists =
@@ -922,7 +922,7 @@ class SmarmDesktop : DesktopControl
 
   protected override void OnKeyDown(KeyEventArgs e)
   { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt|KeyMod.Ctrl))
-    { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+    { if(e.KE.Key==Key.Enter || e.KE.Key==Key.KpEnter)
       { StopKeyRepeat();
         App.Fullscreen = !App.Fullscreen;
         e.Handled = true;
