@@ -140,23 +140,13 @@ class TopBar : ContainerControl
   { App.Desktop.StopKeyRepeat();
     string file = FileChooser.Load(Desktop, FileType.Directory, lastPath);
     if(file!="")
-    { try
-      { App.Desktop.World.Load(file);
-        lastPath = file;
-        App.Desktop.StatusText = lastPath+" loaded.";
-      }
-      catch(Exception e)
-      { App.Desktop.World.Clear();
-        MessageBox.Show(Desktop, "Error", string.Format("An error occurred while loading {0} -- {1}", file,
-                                                        e.Message));
-        App.Desktop.StatusText = file+" failed to load.";
-      }
+    { App.Desktop.World.Load(file);
+      lastPath = file;
     }
   }
 
   public bool Save()
   { if(lastPath==null) return SaveAs();
-    App.Desktop.StopKeyRepeat();
     App.Desktop.World.Save(lastPath, false);
     App.Desktop.StatusText = lastPath+" saved.";
     return true;
@@ -476,15 +466,30 @@ class WorldDisplay : Control
   }
 
   public void Load(string directory)
-  { Clear();
-    world.Load(directory);
-    BackColor = world.BackColor;
-    Invalidate();
+  { try
+    { Clear();
+      world.Load(directory);
+      BackColor = world.BackColor;
+      Invalidate();
+      App.Desktop.StatusText = directory+" loaded.";
+    }
+    catch(Exception e)
+    { Clear();
+      MessageBox.Show(Desktop, "Error", string.Format("An error occurred while loading {0} -- {1}", directory,
+                                                      e.Message));
+      App.Desktop.StatusText = directory+" failed to load.";
+    }
   }
 
   public void Save(string directory, bool compile)
-  { if(compile) world.Compile(directory);
-    else world.Save(directory);
+  { try
+    { if(compile) world.Compile(directory);
+      else world.Save(directory);
+    }
+    catch(Exception e)
+    { App.Desktop.StatusText = "An error occurred during the save/compile process.";
+      MessageBox.Show(Desktop, "Error occurred", e.Message);
+    }
   }
   
   public void ShowLevelProperties()
