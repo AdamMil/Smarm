@@ -236,14 +236,15 @@ class Layer : IDisposable
     for(int yi=0; yi<h; yi++) for(int xi=0; xi<w; xi++) RemoveTile(array, x+xi, y+yi);
   }
 
-  // remove a rectangle of tiles in an array, given pixel coordinates
+  // remove a rectangle of tiles in an array, given zoom coordinates
   void ClearZC(Tile[,] array, int zx, int zy, int zw, int zh)
-  { Clear(array, zx/PartWidth, zy/PartHeight, (zw+PartWidth-1)/PartWidth, (zh+PartHeight-1)/PartHeight);
+  { int x=zx/PartWidth, y=zy/PartHeight; 
+    Clear(array, x, y, (zx+zw+PartWidth-1)/PartWidth-x, (zh+PartHeight-1)/PartHeight-y);
   }
 
-  // fill a rectangle of tiles in an array, given pixel coordinates
+  // fill a rectangle of tiles in an array, given zoom coordinates
   void FillZC(Tile[,] array, int zx, int zy, int zw, int zh, Color color)
-  { int bx=zx/PartWidth, by=zy/PartHeight, bw=(zw+PartWidth-1)/PartWidth, bh=(zh+PartHeight-1)/PartHeight;
+  { int bx=zx/PartWidth, by=zy/PartHeight, bw=(zx+zw+PartWidth-1)/PartWidth-bx, bh=(zy+zh+PartHeight-1)/PartHeight-by;
     bw = Math.Min(bw+bx, array.GetLength(1))-bx; bh = Math.Min(bh+by, array.GetLength(0))-by;
     for(int yi=0; yi<bh; yi++)
       for(int xi=0; xi<bw; xi++)
@@ -374,7 +375,6 @@ class Layer : IDisposable
         }
       }
     
-    // FIXME: if the surface has area (shouldn't it always?!), clear the affected scaled blocks
     if(s.Width>1 && s.Height>1 && zoom==ZoomMode.Full)
     { Clear(fourth, bx/4, by/4, (bx+bw+3)/4-bx/4, (by+bh+3)/4-by/4);
       Clear(sixteenth, bx/16, by/16, (bx+bw+15)/16-bx/16, (by+bh+15)/16-by/16);
