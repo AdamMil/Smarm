@@ -153,14 +153,13 @@ class Layer : IDisposable
   }
 
   public void Save(string path, System.IO.TextWriter writer, FSFile fsfile, int layerNum, bool compile)
-  { if(compile) Save(path, writer, fsfile, true, layerNum, 0, ZoomMode.Normal);
+  { if(compile) Save(path, writer, null, layerNum, true, ZoomMode.Normal);
     else
-    { int imgNum=0;
-      writer.WriteLine("  (layer {0}", layerNum);
+    { writer.WriteLine("  (layer {0}", layerNum);
       writer.WriteLine("    (tiles");
-      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Full);
-      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Normal);
-      imgNum = Save(path, writer, fsfile, false, layerNum, imgNum, ZoomMode.Tiny);
+      Save(path, writer, fsfile, layerNum, false, ZoomMode.Full);
+      Save(path, writer, fsfile, layerNum, false, ZoomMode.Normal);
+      Save(path, writer, fsfile, layerNum, false, ZoomMode.Tiny);
       writer.WriteLine("    )");
     }
 
@@ -223,7 +222,15 @@ class Layer : IDisposable
     }
     else
     { cs = new CachedSurface(name);
-      cs.Surface = LoadSurface(name);
+      if(File.Exists(world.basePath+name))
+      { cs.Surface = new Surface(world.basePath+name, ImageType.PNG);
+        cs.Changed = true;
+        cs.Name = world.NextTile.ToString()+".png";
+      }
+      else if(world.fsFile!=null)
+      { cs.Surface = new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);
+      }
+      else throw new ArgumentException("Unable to load surface");
       surfaces[name] = mru.Prepend(cs);
     }
     UnloadOldTiles();
@@ -325,15 +332,6 @@ class Layer : IDisposable
     }
   }
 
-  // given a filename, load a surface, looking first in the directory and then in the FSFile
-  Surface LoadSurface(string name)
-  { if(File.Exists(world.basePath+name)) return new Surface(world.basePath+name, ImageType.PNG);
-    else if(world.fsFile!=null)
-    { return new Surface(world.fsFile.GetStream(name), ImageType.PNG, false);
-    }
-    else throw new ArgumentException("Unable to load surface");
-  }
-
   // remove a surface and delete it from the disk if it's been swapped out
   void RemoveSurface(string[,] array, int x, int y)
   { string name = array[y, x];
@@ -345,6 +343,7 @@ class Layer : IDisposable
       mru.Remove(node);
       surfaces.Remove(name);
     }
+    if(world.fsFile!=null && world.fsFile.Contains(name)) world.fsFile.DeleteFile(name);
     if(File.Exists(world.basePath+name)) File.Delete(world.basePath+name);
     array[y, x] = null;
   }
@@ -363,9 +362,11 @@ class Layer : IDisposable
     return array;
   }
   
-  int Save(string path, TextWriter writer, FSFile fsfile, bool compile, int layerNum, int imgNum, ZoomMode zoom)
+  void Save(string path, TextWriter writer, FSFile fsfile, int layerNum, bool compile, ZoomMode zoom)
   { string[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     MemoryStream ms = new MemoryStream(4096);
+    bool newPath = world.basePath!=path;
+
     for(int x=0; x<surfaces.GetLength(1); x++)
       for(int y=0; y<surfaces.GetLength(0); y++)
       { CachedSurface cs = GetSurface(surfaces, x, y);
@@ -374,43 +375,27 @@ class Layer : IDisposable
           cs = GetSurface(surfaces, x, y);
         }
         if(cs!=null)
-        { if(!IsEmpty(cs.Surface))
-          { string fn = string.Format("layer{0}_{1}.png", layerNum, imgNum++);
-            if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
-                                        fn, x*PartWidth, y*PartHeight, layerNum);
+        { if(IsEmpty(cs.Surface)) RemoveSurface(surfaces, x, y);
+          else
+          { if(compile) writer.WriteLine("  (stamp (file \"{0}\") (pos {1} {2}) (layer {3}))",
+                                         cs.Name, x*PartWidth, y*PartHeight, layerNum);
             else writer.WriteLine("      (tile \"{0}\" (pos {1} {2}) (zoom {3}))",
-                                  fn, x*PartWidth, y*PartHeight, (int)zoom);
-            if(fsfile==null) cs.Surface.Save(path+fn, ImageType.PNG);
-            else
+                                  cs.Name, x*PartWidth, y*PartHeight, (int)zoom);
+            if(fsfile==null) cs.Surface.Save(path+cs.Name, ImageType.PNG);
+            else if(true || cs.Changed || newPath || !fsfile.Contains(cs.Name))
             { ms.Position = 0;
               ms.SetLength(0);
               cs.Surface.Save(ms, ImageType.PNG);
-              Stream stream = fsfile.AddFile(fn, (int)ms.Length);
+              Stream stream = fsfile.AddFile(cs.Name, (int)ms.Length);
               IOH.CopyStream(ms, stream, true);
               stream.Close();
+              cs.Changed = false;
             }
-            
+
             if(File.Exists(world.basePath+cs.Name)) File.Delete(world.basePath+cs.Name);
-            // update the filename. note that this leaves the array in an invalid state, but we'll fix it below.
-            // we can't fix it now because the new name might conflict with another tile having that name
-            cs.Name=fn;
           }
-          else RemoveSurface(surfaces, x, y);
         }
       }
-
-    // fix up the filenames
-    for(int x=0; x<surfaces.GetLength(1); x++)
-      for(int y=0; y<surfaces.GetLength(0); y++)
-      { CachedSurface cs = GetSurface(surfaces, x, y);
-        if(cs!=null && cs.Name!=surfaces[y,x])
-        { LinkedList.Node node = (LinkedList.Node)this.surfaces[surfaces[y,x]];
-          this.surfaces.Remove(surfaces[y,x]);
-          this.surfaces[surfaces[y,x]=cs.Name] = node;
-        }
-      }
-
-    return imgNum;
   }
   
   // take an image and return a copy in the same format, but scaled down to 1/16th the size (1/4th on each axis)
@@ -463,7 +448,7 @@ class Layer : IDisposable
   // the surface should then be filled with valid data
   CachedSurface SetSurface(string[,] array, int x, int y)
   { if(array[y, x]!=null) throw new InvalidOperationException("Tile is not null!");
-    string name = "layer" + world.NextTile + ".png";
+    string name = world.NextTile.ToString() + ".png";
     array[y, x] = name;
 
     CachedSurface cs = new CachedSurface(name);
@@ -506,7 +491,6 @@ class Layer : IDisposable
       if(old.Changed)
       { old.Surface.Save(world.basePath+old.Name, ImageType.PNG);
         old.Surface.Dispose();
-        old.Changed = false; // the on-disk version is now up to date
       }
     }
   }
