@@ -52,6 +52,9 @@ class TopBar : ContainerControl
     editMenu = new Menu();
     editMenu.Add(new MenuItem("Export Rect", 'E')).Click += new EventHandler(exportRect_OnClick);
     
+    viewMenu = new Menu();
+    viewMenu.Add(new MenuItem("Toggle Fullscreen", 'F')).Click += new EventHandler(toggleFullscreen_OnClick);
+    
     lblLayer.Menu = new Menu();
     lblLayer.Menu.Popup += new EventHandler(layerMenu_Popup);
     
@@ -64,24 +67,27 @@ class TopBar : ContainerControl
     lblMode.Menu.Add(new MenuItem("Objects", 'O'));
     lblMode.Menu.Add(new MenuItem("Polygons", 'P'));
 
-    foreach(object o in new MenuBase[] { fileMenu, editMenu, lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
+    foreach(object o in new MenuBase[] { fileMenu, editMenu, viewMenu, lblLayer.Menu, lblZoom.Menu, lblMode.Menu })
     { Menu menu = (Menu)o;
       menu.BackColor = BackColor;
       menu.SelectedBackColor = Color.FromArgb(80, 80, 80);
       menu.SelectedForeColor = Color.White;
     }
 
-    btnFile.BackColor = btnEdit.BackColor = Color.FromArgb(80, 80, 80);
-    btnFile.TextAlign = btnEdit.TextAlign = ContentAlignment.TopCenter; // HACK: the arial font doesn't align properly
+    btnFile.BackColor = btnEdit.BackColor = btnView.BackColor = Color.FromArgb(80, 80, 80);
+    btnFile.TextAlign = btnEdit.TextAlign = btnView.TextAlign = ContentAlignment.TopCenter; // HACK: the arial font doesn't align properly
 
     btnFile.Bounds = new Rectangle(4, 6, 40, 20);
     btnEdit.Bounds = new Rectangle(btnFile.Right+4, 6, 40, 20);
+    btnView.Bounds = new Rectangle(btnEdit.Right+4, 6, 40, 20);
 
     btnFile.Tag = fileMenu;
     btnEdit.Tag = editMenu;
+    btnView.Tag = viewMenu;
     { ClickEventHandler eh = new ClickEventHandler(btnMenu_OnClick);
       btnFile.Click += eh;
       btnEdit.Click += eh;
+      btnView.Click += eh;
     }
 
     lblLayer.Bounds = new Rectangle(Width-lblWidth, 0, lblWidth, lblHeight);
@@ -94,7 +100,7 @@ class TopBar : ContainerControl
     lblMouse.Text = "1274x763";
     lblMode.Text  = "Mode: Obj";
     lblZoom.Text  = "Zoom: Full";
-    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, btnFile, btnEdit);
+    Controls.AddRange(lblLayer, lblMouse, lblMode, lblZoom, btnFile, btnEdit, btnView);
     #endregion
   }
 
@@ -102,6 +108,7 @@ class TopBar : ContainerControl
 
   public void OpenFileMenu() { OpenMenu(fileMenu, btnFile); }
   public void OpenEditMenu() { OpenMenu(editMenu, btnEdit); }
+  public void OpenViewMenu() { OpenMenu(viewMenu, btnView); }
 
   protected override void OnPaintBackground(PaintEventArgs e)
   { base.OnPaintBackground(e);
@@ -119,15 +126,19 @@ class TopBar : ContainerControl
   }
 
   void Load()
-  { string file = FileChooser.Load(Desktop, true);
+  { lastPath = FileChooser.Load(Desktop, FileType.Directory, lastPath);
+    App.Desktop.StatusText = lastPath+" loaded.";
   }
 
   bool Save()
-  { return false;
+  { if(lastPath==null) SaveAs();
+    App.Desktop.StatusText = lastPath+" saved.";
+    return false;
   }
 
   bool SaveAs()
-  { return false;
+  { lastPath = FileChooser.Save(Desktop, FileType.Directory);
+    return Save();
   }
 
   void Exit() { if(CanUnloadLevel()) GameLib.Events.Events.PushEvent(new GameLib.Events.QuitEvent()); }
@@ -159,13 +170,17 @@ class TopBar : ContainerControl
   void exit_OnClick(object sender, EventArgs e)   { Exit(); }
 
   void exportRect_OnClick(object sender, EventArgs e) { ExportRect(); }
+
+  private void toggleFullscreen_OnClick(object sender, EventArgs e) { App.Fullscreen = !App.Fullscreen; }
   #endregion
 
   const int lblWidth=64, lblHeight=16, lblPadding=6;
-  Button btnFile=new Button("File"), btnEdit=new Button("Edit");
+  Button btnFile=new Button("File"), btnEdit=new Button("Edit"), btnView=new Button("View");
   MenuLabel lblLayer=new MenuLabel(), lblMode=new MenuLabel(), lblZoom=new MenuLabel();
   Label  lblMouse=new Label();
-  Menu   fileMenu, editMenu;
+  Menu   fileMenu, editMenu, viewMenu;
+  
+  string lastPath;
 
   private void layerMenu_Popup(object sender, EventArgs e)
   { Menu menu = (Menu)sender;
@@ -225,15 +240,16 @@ class WorldDisplay : Control
 #endregion
 
 #region FileChooser
+[Flags] enum FileType { File=1, Directory=2, Both=File|Directory }
 class FileChooser : Form
-{ public FileChooser() : this(System.IO.Directory.GetCurrentDirectory()) { }
+{ public FileChooser() : this(WithSlash(System.IO.Directory.GetCurrentDirectory())) { }
   public FileChooser(string initialPath)
-  { path.Text=initialPath;
+  { path.Text=initialPath.Replace('\\', '/');
     KeyPreview=true;
     Controls.AddRange(label, path);
   }
 
-  public bool AllowDirectory { get { return dirok; } set { dirok=value; } }
+  public FileType AllowedTypes { get { return type; } set { type=value; } }
   public bool ExistingOnly { get { return existing; } set { existing=value; } }
   public bool OverwriteWarning { get { return warn; } set { warn=value; } }
 
@@ -241,14 +257,15 @@ class FileChooser : Form
   { GameLib.Fonts.Font font = RawFont==null ? desktop.Font : RawFont;
     if(font!=null)
     { int pad=6, sep=4;
-      label.Text = string.Format("Choose file{0} and press enter:", dirok ? " or directory" : "");
+      SetDefaultLabel();
       int width  = Math.Max(font.CalculateSize(label.Text).Width+pad*2, desktop.Width/2);
       int height = pad*2+sep+font.LineSkip*5/2;
 
       Bounds = new Rectangle((desktop.Width-width)/2, (desktop.Height-height)/2, width, height);
-      label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip);
+      label.Bounds = new Rectangle(pad, pad, Width-pad*2, font.LineSkip+1);
       path.Bounds = new Rectangle(pad, label.Bottom+sep, Width-pad*2, font.LineSkip*3/2);
       path.Focus();
+      path.CaretPosition = path.Text.Length;
     }
     ShowDialog(desktop);
     return path.Text;
@@ -257,17 +274,67 @@ class FileChooser : Form
   protected override void OnKeyDown(KeyEventArgs e)
   { if(!e.Handled && e.KE.KeyMods==KeyMod.None)
     { if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
-      { if(!existing) Close();
-        else
-          try
-          { if(dirok && System.IO.Directory.Exists(path.Text) || System.IO.File.Exists(path.Text))
-              Close();
-          }
-          catch { }
+      { try
+        { bool exists =
+            (type&FileType.Directory)!=0 && System.IO.Directory.Exists(path.Text) ||
+            (type&FileType.File)!=0 && System.IO.File.Exists(path.Text);
+          if(exists && warn &&
+             MessageBox.Show(Desktop, "File exists", "That "+TypeString+" already exists. Overwrite?",
+                             MessageBoxButtons.YesNo)==1)
+            goto abort;
+          if(existing && !exists) { label.Text = "That "+TypeString+" does not exist."; goto abort; }
+          Close();
+        }
+        catch { }
+        abort:
         e.Handled=true;
       }
       else if(e.KE.Key==Key.Tab)
-      { e.Handled=true;
+      { string path = this.path.Text;
+        try
+        { if(!System.IO.File.Exists(path))
+          { int pos = path.LastIndexOfAny(new char[] { '/', '\\' });
+            if(pos!=-1)
+            { string dirname = path.Substring(0, pos);
+              if(pos==2 && dirname[1]==':') dirname += '/';
+              System.IO.DirectoryInfo dir = new System.IO.DirectoryInfo(dirname);
+              string[] names;
+              { string search = pos==path.Length-1 ? null : path.Substring(pos+1)+'*';
+                System.IO.FileInfo[] files = (type&FileType.File)==0 ? null : search==null ? dir.GetFiles() : dir.GetFiles(search);
+                System.IO.DirectoryInfo[] dirs = search==null ? dir.GetDirectories() : dir.GetDirectories(search);
+                names = new string[(files==null ? 0 : files.Length) + dirs.Length];
+                int i=0;
+                foreach(System.IO.DirectoryInfo d in dirs) names[i++] = d.Name+'/';
+                if(files!=null) foreach(System.IO.FileInfo f in files) names[i++] = f.Name;
+                if(names.Length>0)
+                { if(names.Length==1) { SetDefaultLabel(); i=names[0].Length+1; }
+                  else
+                  { string name = names[0].ToLower(), sub;
+                    for(i=1; i<=name.Length; i++)
+                    { sub = name.Substring(0, i);
+                      for(int j=1; j<names.Length; j++) if(!names[j].ToLower().StartsWith(sub)) goto alts;
+                    }
+                    SetDefaultLabel();
+                    goto done;
+                    alts:
+                    string alts=string.Empty;
+                    sub = name.Substring(0, i-1);
+                    for(int j=0; j<names.Length; j++)
+                      if(names[j].ToLower().StartsWith(sub)) alts += (alts.Length>0 ? " " : "") + names[j];
+                    label.Text = alts;
+                  }
+                  done:
+                  if(--i>0)
+                  { this.path.Text = path.Substring(0, pos+1)+names[0].Substring(0, i);
+                    this.path.Select(this.path.Text.Length, 0);
+                  }
+                }
+              }
+            }
+          }
+        }
+        catch { }
+        e.Handled=true;
       }
       else if(e.KE.Key==Key.Escape)
       { path.Text="";
@@ -277,26 +344,43 @@ class FileChooser : Form
     }
     base.OnKeyDown(e);
   }
+  
+  string TypeString
+  { get
+    { if(type==FileType.File) return "file";
+      else if(type==FileType.Directory) return "directory";
+      else return "file/directory";
+    }
+  }
 
-  public static string Load(DesktopControl desktop, bool dirOk) { return Load(desktop, dirOk, null); }
-  public static string Load(DesktopControl desktop, bool dirOk, string initialPath)
+  void SetDefaultLabel() { label.Text = "Choose a "+TypeString+" and press enter:"; }
+  
+  static string WithSlash(string s)
+  { char c=s[s.Length-1];
+    if(c!='/' && c!='\\') s += '/';
+    return s;
+  }
+
+  public static string Load(DesktopControl desktop, FileType type) { return Load(desktop, type, null); }
+  public static string Load(DesktopControl desktop, FileType type, string initialPath)
   { FileChooser file = initialPath==null ? new FileChooser() : new FileChooser(initialPath);
     file.ExistingOnly = true;
-    file.AllowDirectory = dirOk;
+    file.AllowedTypes = type;
     return file.Show(desktop);
   }
   
-  public static string Save(DesktopControl desktop, bool dirOk) { return Save(desktop, dirOk, null); }
-  public static string Save(DesktopControl desktop, bool dirOk, string initialPath)
+  public static string Save(DesktopControl desktop, FileType type) { return Save(desktop, type, null); }
+  public static string Save(DesktopControl desktop, FileType type, string initialPath)
   { FileChooser file = initialPath==null ? new FileChooser() : new FileChooser(initialPath);
     file.OverwriteWarning = true;
-    file.AllowDirectory = dirOk;
+    file.AllowedTypes = type;
     return file.Show(desktop);
   }
 
-  Label   label = new Label();
-  TextBox path  = new TextBox();
-  bool    dirok, existing, warn;
+  Label    label = new Label();
+  TextBox  path  = new TextBox();
+  FileType type  = FileType.File;
+  bool    existing, warn;
 }
 #endregion
 
@@ -305,6 +389,7 @@ class SmarmDesktop : DesktopControl
 { public SmarmDesktop()
   { AutoFocusing = AutoFocus.None;
     KeyPreview   = true;
+    KeyRepeatDelay = 350;
     ForeColor    = Color.White;
     BackColor    = Color.Black;
     Controls.AddRange(topBar, bottomBar, world);
@@ -317,12 +402,17 @@ class SmarmDesktop : DesktopControl
   protected override void OnKeyPress(KeyEventArgs e)
   { if(!e.Handled && e.KE.Down && e.KE.HasOnlyKeys(KeyMod.Alt))
     { e.Handled = true;
-      if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter) App.Fullscreen = !App.Fullscreen;
+      if(e.KE.Key==Key.Return || e.KE.Key==Key.KpEnter)
+      { if(enterKey==Key.None) { enterKey=e.KE.Key; App.Fullscreen = !App.Fullscreen; }
+      }
       else if(char.ToUpper(e.KE.Char)=='F') topBar.OpenFileMenu();
       else if(char.ToUpper(e.KE.Char)=='E') topBar.OpenEditMenu();
+      else if(char.ToUpper(e.KE.Char)=='V') topBar.OpenViewMenu();
       else e.Handled = false;
     }
   }
+
+  protected override void OnKeyUp(KeyEventArgs e) { if(e.KE.Key==enterKey) enterKey=Key.None; }
 
   protected override void OnResize(EventArgs e)
   { topBar.Bounds = new Rectangle(0, 0, Width, 32);
@@ -334,6 +424,7 @@ class SmarmDesktop : DesktopControl
   TopBar topBar = new TopBar();
   BottomBar bottomBar = new BottomBar();
   WorldDisplay world = new WorldDisplay();
+  Key enterKey=Key.None;
 }
 #endregion
 
