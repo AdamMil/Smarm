@@ -69,7 +69,10 @@ class List : IEnumerable
     sw.Flush();
   }
   
-  public System.Drawing.Color ToColor() { return System.Drawing.Color.FromArgb(GetInt(0), GetInt(1), GetInt(2)); }
+  public System.Drawing.Color ToColor()
+  { return items.Count==3 ? System.Drawing.Color.FromArgb(GetInt(0), GetInt(1), GetInt(2))
+                          : System.Drawing.Color.FromArgb(GetInt(3), GetInt(0), GetInt(1), GetInt(2));
+  }
   public System.Drawing.Point ToPoint() { return new System.Drawing.Point(GetInt(0), GetInt(1)); }
 
   public override string ToString()
