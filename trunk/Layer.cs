@@ -66,6 +66,17 @@ class Layer : IDisposable
     ClearZC(sixteenth, rect.X/4, rect.Y/4, rect.Width/4, rect.Height/4);
   }
 
+  public void FillRect(Rectangle wrect, Color color)
+  { int nw=wrect.Right*4/PartWidth, nh=wrect.Bottom*4/PartHeight;
+    full   = ResizeTo(full, nw, nh);
+    width  = Math.Max(width, nw);
+    height = Math.Max(height, nh);
+    FillZC(full, wrect.X*4, wrect.Y*4, wrect.Width*4, wrect.Height*4, color);
+    ClearZC(fourth, wrect.X, wrect.Y, wrect.Width, wrect.Height);
+    ClearZC(sixteenth, wrect.X/4, wrect.Y/4, wrect.Width/4, wrect.Height/4);
+    SyncScaledSizes();
+  }
+
   public void InsertSurface(Surface s, int fx, int fy)
   { InsertSurface(s, fx, fy, ZoomMode.Full, true);
     SyncScaledSizes(); // if the insertion enlarged the world size, enlarge the scaled arrays to match
@@ -208,12 +219,7 @@ class Layer : IDisposable
   void CheckSolid(Tile[,] array, int bx, int by)
   { CachedSurface cs = GetSurface(array, bx, by);
     Color c = cs.Surface.GetPixel(0, 0);
-    if(IsSolid(cs.Surface, c))
-    { cs.Color = array[by,bx].Color = c;
-      cs.Surface.Dispose();
-      cs.Surface = null;
-      cached--;
-    }
+    if(IsSolid(cs.Surface, c)) SetTileColor(array, bx, by, c);
   }
 
   void Clear(Tile[,] array) // remove all surfaces in an array
@@ -230,6 +236,16 @@ class Layer : IDisposable
   // remove a rectangle of tiles in an array, given pixel coordinates
   void ClearZC(Tile[,] array, int zx, int zy, int zw, int zh)
   { Clear(array, zx/PartWidth, zy/PartHeight, (zw+PartWidth-1)/PartWidth, (zh+PartHeight-1)/PartHeight);
+  }
+
+  // fill a rectangle of tiles in an array, given pixel coordinates
+  void FillZC(Tile[,] array, int zx, int zy, int zw, int zh, Color color)
+  { int bx=zx/PartWidth, by=zy/PartHeight, bw=(zw+PartWidth-1)/PartWidth, bh=(zh+PartHeight-1)/PartHeight;
+    bw = Math.Min(bw+bx, array.GetLength(1))-bx; bh = Math.Min(bh+by, array.GetLength(0))-by;
+    for(int yi=0; yi<bh; yi++)
+      for(int xi=0; xi<bw; xi++)
+        if(array[by+yi, bx+xi].Name==null) MakeTile(array, bx+xi, by+yi, color);
+        else SetTileColor(array, bx+xi, by+yi, color);
   }
 
   // return a CachedSurface for the given array element, loading it first if necessary
@@ -272,7 +288,7 @@ class Layer : IDisposable
 
     Tile[,] surfaces = (zoom==ZoomMode.Full ? full : zoom==ZoomMode.Normal ? fourth : sixteenth);
     CachedSurface cs = GetSurface(surfaces, bx, by);
-    if(cs==null) cs = SetSurface(surfaces, bx, by);
+    if(cs==null) cs = MakeTile(surfaces, bx, by);
     if(cs.Color.A!=0)
     { if(c==cs.Color) return;
       cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
@@ -330,7 +346,7 @@ class Layer : IDisposable
       for(int yi=0, sy=0; yi<bh; sy += yi==0 ? PartHeight-zy : PartHeight, yi++)
       { CachedSurface cs = GetSurface(surfaces, bx+xi, by+yi);
         if(cs==null)
-        { cs = SetSurface(surfaces, bx+xi, by+yi);
+        { cs = MakeTile(surfaces, bx+xi, by+yi);
           width  = Math.Max(width,  bx+xi+1);
           height = Math.Max(height, by+yi+1);
         }
@@ -411,6 +427,25 @@ class Layer : IDisposable
       }
       SyncScaledSizes();
     }
+  }
+
+  // given the index of an empty tile, it creates an empty surface with a new name and fills that space
+  // the surface should then be filled with valid data
+  CachedSurface MakeTile(Tile[,] array, int x, int y) { return MakeTile(array, x, y, Color.Transparent); }
+
+  CachedSurface MakeTile(Tile[,] array, int x, int y, Color color)
+  { if(array[y, x].Name!=null) throw new InvalidOperationException("Tile is not empty!");
+    string name = world.NextTile.ToString() + ".png";
+    array[y, x] = new Tile(name, color);
+
+    CachedSurface cs = new CachedSurface(name, color);
+    surfaces[name] = mru.Prepend(cs);
+    if(cs.Color.A==0)
+    { cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
+      cached++;
+      UnloadOldTiles();
+    }
+    return cs;
   }
 
   // remove a surface and delete it from the disk
@@ -545,20 +580,14 @@ class Layer : IDisposable
       }
   }
     
-  // given the index of an empty tile, it creates an empty surface with a new name and fills that space
-  // the surface should then be filled with valid data
-  CachedSurface SetSurface(Tile[,] array, int x, int y)
-  { if(array[y, x].Name!=null) throw new InvalidOperationException("Tile is not empty!");
-    string name = world.NextTile.ToString() + ".png";
-    array[y, x] = new Tile(name);
-
-    CachedSurface cs = new CachedSurface(name);
-    cs.Surface = new Surface(PartWidth, PartHeight, 32, SurfaceFlag.SrcAlpha);
-    surfaces[name] = mru.Prepend(cs);
-    cached++;
-
-    UnloadOldTiles();
-    return cs;
+  void SetTileColor(Tile[,] array, int x, int y, Color c)
+  { CachedSurface cs = GetSurface(array, x, y);
+    if(cs.Color.A==0)
+    { cs.Surface.Dispose();
+      cs.Surface = null;
+      cached--;
+    }
+    cs.Color = array[y,x].Color = c;
   }
 
   // shift an array over by x,y tiles. width,height are the width,heigth of the array's existing data
